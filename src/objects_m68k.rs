@@ -47,7 +47,7 @@ impl Default for NameEntry {
 }
 
 impl NameEntry {
-    pub fn new(id: u32, name: CString) -> Self {
+    fn new(id: u32, name: CString) -> Self {
         Self { id: id, name: name }
     }
 
@@ -588,14 +588,14 @@ impl ObjectHeader {
     }
 }
 
-pub struct Object {
+pub struct MetrowerksObject {
     header: ObjectHeader,
     names: Vec<NameEntry>,
     symtab: SymbolTable,
     hunks: CodeHunks,
 }
 
-impl Default for Object {
+impl Default for MetrowerksObject {
     fn default() -> Self {
         Self {
             header: ObjectHeader::default(),
@@ -606,7 +606,7 @@ impl Default for Object {
     }
 }
 
-impl Object {
+impl MetrowerksObject {
     fn new(
         header: ObjectHeader,
         names: Vec<NameEntry>,
@@ -621,7 +621,7 @@ impl Object {
         }
     }
 
-    pub fn names(&self) -> &Vec<NameEntry> {
+    pub fn names(&self) -> &[NameEntry] {
         &self.names
     }
 
@@ -687,7 +687,7 @@ impl Default for ObjectParseState {
     }
 }
 
-fn parse_object(value: &[u8]) -> Result<Object, String> {
+fn parse_object(value: &[u8]) -> Result<MetrowerksObject, String> {
     let mut header: ObjectHeader = ObjectHeader::default();
 
     let mut remaining_names: usize = 0;
@@ -938,10 +938,15 @@ fn parse_object(value: &[u8]) -> Result<Object, String> {
         }
     }
 
-    Ok(Object::new(header, name_table, symbol_table, code_objects))
+    Ok(MetrowerksObject::new(
+        header,
+        name_table,
+        symbol_table,
+        code_objects,
+    ))
 }
 
-impl TryFrom<&[u8]> for Object {
+impl TryFrom<&[u8]> for MetrowerksObject {
     type Error = String;
 
     fn try_from(value: &[u8]) -> Result<Self, Self::Error> {

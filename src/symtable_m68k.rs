@@ -114,14 +114,14 @@ impl Default for SymbolTable {
 }
 
 impl SymbolTable {
-    pub fn new(routines: Vec<Routine>, type_table: TypeTable) -> Self {
+    fn new(routines: Vec<Routine>, type_table: TypeTable) -> Self {
         Self {
             routines: routines,
             types: type_table,
         }
     }
 
-    pub fn routines(&self) -> &Vec<Routine> {
+    pub fn routines(&self) -> &[Routine] {
         &self.routines
     }
 
@@ -178,7 +178,8 @@ impl From<&[u8]> for StatementLocation {
     }
 }
 
-#[derive(Debug, Clone)]
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum StorageKind {
     Local = 0,
     Value,
@@ -200,7 +201,8 @@ impl TryFrom<u8> for StorageKind {
     }
 }
 
-#[derive(Debug, Clone)]
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum StorageClass {
     Register = 0,
     A5,
@@ -231,7 +233,7 @@ pub struct LocalVar {
     var_type: DataType,
     kind: StorageKind,
     sclass: StorageClass,
-    wher: u32,
+    wher: u32, // TODO: Integrate this into the sclass
 }
 
 impl From<&[u8]> for LocalVar {
@@ -249,6 +251,24 @@ impl From<&[u8]> for LocalVar {
             sclass: sclass,
             wher: wher,
         }
+    }
+}
+
+impl LocalVar {
+    pub fn var_type(&self) -> &DataType {
+        &self.var_type
+    }
+
+    pub fn kind(&self) -> StorageKind {
+        self.kind
+    }
+
+    pub fn storage_class(&self) -> StorageClass {
+        self.sclass
+    }
+
+    pub fn wher(&self) -> u32 {
+        self.wher
     }
 }
 
