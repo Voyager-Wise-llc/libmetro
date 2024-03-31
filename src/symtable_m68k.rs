@@ -1,6 +1,6 @@
 use std::slice::Iter;
 
-use super::types_m68k::{DataType, TypeDefinition, TypeTable, TypeTableInput};
+use super::types_m68k::{DataType, TypeDefinition, TypeTable};
 
 use super::util::{convert_be_u16, convert_be_u32, NameIdFromObject};
 
@@ -298,11 +298,11 @@ impl Default for Routine {
 }
 
 impl Routine {
-    pub fn typ(self, typ: RoutineType) -> Self {
+    pub fn new(typ: RoutineType) -> Self {
         Self {
             typ: typ,
-            statement_locations: self.statement_locations,
-            local_vars: self.local_vars,
+            statement_locations: vec![],
+            local_vars: vec![],
         }
     }
 
@@ -395,7 +395,7 @@ fn parse_symtab(value: &[u8]) -> Result<SymbolTable, String> {
                 let tbl = &value[start..];
                 let num_types = header.type_table_count();
 
-                type_table = TypeTable::try_from(TypeTableInput::new(tbl, num_types)).unwrap();
+                type_table = TypeTable::try_from((tbl, num_types)).unwrap();
 
                 ParseState::SymTabHeaderReserved
             }
@@ -429,7 +429,7 @@ fn parse_symtab(value: &[u8]) -> Result<SymbolTable, String> {
             }
             ParseState::ProcessRoutineProcFunc => {
                 let x = convert_be_u16(&routine_bytes[0..2].try_into().unwrap());
-                current_routine = current_routine.typ(match x {
+                current_routine = Routine::new(match x {
                     // TODO: Move this
                     x if x == RoutineType::Procedure as u16 => RoutineType::Procedure,
                     x if x == RoutineType::Function as u16 => RoutineType::Function,
