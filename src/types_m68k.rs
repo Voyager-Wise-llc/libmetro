@@ -737,6 +737,10 @@ impl TypeTable {
     pub fn type_iter(&self) -> Iter<TypeDefinition> {
         self.table.iter()
     }
+
+    pub fn length(&self) -> usize {
+        self.table.len()
+    }
 }
 
 fn parse_types(value: &[u8], num_types: u32) -> Result<TypeTable, String> {
@@ -745,7 +749,9 @@ fn parse_types(value: &[u8], num_types: u32) -> Result<TypeTable, String> {
     let mut types: Vec<TypeDefinition> = vec![];
     let mut remaining_types = num_types;
 
-    let mut current_type = TypeDefinition::default();
+    let mut current_id = 0;
+    let mut current_type: OtherDataType = OtherDataType::Undefined;
+
     let mut curr_branch: TypeParseState = TypeParseState::End;
 
     let mut state: TypeParseState = TypeParseState::default();
@@ -766,8 +772,7 @@ fn parse_types(value: &[u8], num_types: u32) -> Result<TypeTable, String> {
                 TypeParseState::ParseTypeID
             }
             TypeParseState::ParseTypeID => {
-                let id = convert_be_u32(&data[0..4].try_into().unwrap());
-                current_type = current_type.id(id);
+                current_id = convert_be_u32(&data[0..4].try_into().unwrap());
 
                 data = &data[4..];
                 curr_branch // Jump to the proper processing state
@@ -777,7 +782,7 @@ fn parse_types(value: &[u8], num_types: u32) -> Result<TypeTable, String> {
                 let p = Pointer::from(data);
                 data = &data[p.raw_length()..];
 
-                current_type = current_type.data_type(OtherDataType::TypePointer(p));
+                current_type = OtherDataType::TypePointer(p);
 
                 TypeParseState::CommitType
             }
@@ -785,7 +790,7 @@ fn parse_types(value: &[u8], num_types: u32) -> Result<TypeTable, String> {
                 let a = Array::from(data);
                 data = &data[a.raw_length()..];
 
-                current_type = current_type.data_type(OtherDataType::TypeArray(a));
+                current_type = OtherDataType::TypeArray(a);
 
                 TypeParseState::CommitType
             }
@@ -793,7 +798,7 @@ fn parse_types(value: &[u8], num_types: u32) -> Result<TypeTable, String> {
                 let s = Struct::from(data);
                 data = &data[s.raw_length()..];
 
-                current_type = current_type.data_type(OtherDataType::TypeStruct(s));
+                current_type = OtherDataType::TypeStruct(s);
 
                 TypeParseState::CommitType
             }
@@ -804,7 +809,7 @@ fn parse_types(value: &[u8], num_types: u32) -> Result<TypeTable, String> {
                 };
                 data = &data[e.raw_length()..];
 
-                current_type = current_type.data_type(OtherDataType::TypeEnum(e));
+                current_type = OtherDataType::TypeEnum(e);
 
                 TypeParseState::CommitType
             }
@@ -812,7 +817,7 @@ fn parse_types(value: &[u8], num_types: u32) -> Result<TypeTable, String> {
                 let pa = PascalArray::from(data);
                 data = &data[pa.raw_length()..];
 
-                current_type = current_type.data_type(OtherDataType::TypePascalArray(pa));
+                current_type = OtherDataType::TypePascalArray(pa);
 
                 TypeParseState::CommitType
             }
@@ -820,7 +825,7 @@ fn parse_types(value: &[u8], num_types: u32) -> Result<TypeTable, String> {
                 let pr = PascalRange::from(data);
                 data = &data[pr.raw_length()..];
 
-                current_type = current_type.data_type(OtherDataType::TypePascalRange(pr));
+                current_type = OtherDataType::TypePascalRange(pr);
 
                 TypeParseState::CommitType
             }
@@ -828,7 +833,7 @@ fn parse_types(value: &[u8], num_types: u32) -> Result<TypeTable, String> {
                 let ps = PascalSet::from(data);
                 data = &data[ps.raw_length()..];
 
-                current_type = current_type.data_type(OtherDataType::TypePascalSet(ps));
+                current_type = OtherDataType::TypePascalSet(ps);
 
                 TypeParseState::CommitType
             }
@@ -836,7 +841,7 @@ fn parse_types(value: &[u8], num_types: u32) -> Result<TypeTable, String> {
                 let pe = PascalEnum::from(data);
                 data = &data[pe.raw_length()..];
 
-                current_type = current_type.data_type(OtherDataType::TypePascalEnum(pe));
+                current_type = OtherDataType::TypePascalEnum(pe);
 
                 TypeParseState::CommitType
             }
@@ -844,13 +849,16 @@ fn parse_types(value: &[u8], num_types: u32) -> Result<TypeTable, String> {
                 let ps = PascalString::from(data);
                 data = &data[ps.raw_length()..];
 
-                current_type = current_type.data_type(OtherDataType::TypePascalString(ps));
+                current_type = OtherDataType::TypePascalString(ps);
 
                 TypeParseState::CommitType
             }
 
             TypeParseState::CommitType => {
-                types.push(current_type.clone());
+                types.push(TypeDefinition {
+                    typ: current_type.clone(),
+                    id: current_id,
+                });
                 remaining_types -= 1;
 
                 if remaining_types != 0 {
