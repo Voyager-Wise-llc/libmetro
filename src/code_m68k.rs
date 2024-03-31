@@ -20,7 +20,7 @@ impl Default for ObjSimpleHunk {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub enum ObjCodeFlag {
     None,
     GlobalMultiDef,
@@ -50,7 +50,7 @@ impl Default for ObjCodeHunk {
 }
 
 impl ObjCodeHunk {
-    pub fn new(
+    fn new(
         name_id: u32,
         sym_offset: u32,
         sym_decl_offset: u32,
@@ -73,6 +73,14 @@ impl ObjCodeHunk {
     pub fn code_iter(&self) -> Iter<u8> {
         self.code.iter()
     }
+
+    pub fn sym_decl_offset(&self) -> u32 {
+        self.sym_decl_offset
+    }
+
+    pub fn flag(&self) -> ObjCodeFlag {
+        self.special_flag
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -81,10 +89,18 @@ pub struct ObjInitHunk {
 }
 
 impl ObjInitHunk {
-    pub fn new(code: &[u8]) -> Self {
+    fn new(code: &[u8]) -> Self {
         Self {
             code: code.to_owned(),
         }
+    }
+
+    pub fn code_iter(&self) -> Iter<u8> {
+        self.code.iter()
+    }
+
+    pub fn code(&self) -> &[u8] {
+        &self.code
     }
 }
 
@@ -97,7 +113,7 @@ pub struct ObjDataHunk {
 }
 
 impl ObjDataHunk {
-    pub fn new(name_id: u32, sym_type_id: u32, sym_decl_offset: u32, code: &[u8]) -> Self {
+    fn new(name_id: u32, sym_type_id: u32, sym_decl_offset: u32, code: &[u8]) -> Self {
         Self {
             name_id: name_id,
             sym_type_id: sym_type_id,
@@ -109,6 +125,14 @@ impl ObjDataHunk {
     pub fn data_iter(&self) -> Iter<u8> {
         self.data.iter()
     }
+
+    pub fn sym_type_id(&self) -> u32 {
+        self.sym_type_id
+    }
+
+    pub fn sym_decl_offset(&self) -> u32 {
+        self.sym_decl_offset
+    }
 }
 
 #[derive(NameIdFromObject, Debug, Clone)]
@@ -118,11 +142,15 @@ pub struct ObjEntryHunk {
 }
 
 impl ObjEntryHunk {
-    pub fn new(name_id: u32, offset: u32) -> Self {
+    fn new(name_id: u32, offset: u32) -> Self {
         Self {
             name_id: name_id,
             offset: offset,
         }
+    }
+
+    pub fn offset(&self) -> u32 {
+        self.offset
     }
 }
 
@@ -133,11 +161,19 @@ pub struct ObjXRefPair {
 }
 
 impl ObjXRefPair {
-    pub fn new(offset: u32, value: u32) -> Self {
+    fn new(offset: u32, value: u32) -> Self {
         Self {
             offset: offset,
             value: value,
         }
+    }
+
+    pub fn offset(&self) -> u32 {
+        self.offset
+    }
+
+    pub fn value(&self) -> u32 {
+        self.value
     }
 }
 
@@ -148,7 +184,7 @@ pub struct ObjXRefHunk {
 }
 
 impl ObjXRefHunk {
-    pub fn new(name_id: u32, pairs: Vec<ObjXRefPair>) -> Self {
+    fn new(name_id: u32, pairs: Vec<ObjXRefPair>) -> Self {
         Self {
             name_id: name_id,
             pairs: pairs,
@@ -166,10 +202,18 @@ pub struct ObjExceptInfo {
 }
 
 impl ObjExceptInfo {
-    pub fn new(info: &[u8]) -> Self {
+    fn new(info: &[u8]) -> Self {
         Self {
             info: info.to_vec(),
         }
+    }
+
+    pub fn info(&self) -> &[u8] {
+        &self.info
+    }
+
+    pub fn info_iter(&self) -> Iter<u8> {
+        self.info.iter()
     }
 }
 
@@ -182,18 +226,25 @@ pub struct ObjContainerHunk {
 }
 
 impl ObjContainerHunk {
-    pub fn new(
-        name_id: u32,
-        old_def_version: u32,
-        old_imp_version: u32,
-        current_version: u32,
-    ) -> Self {
+    fn new(name_id: u32, old_def_version: u32, old_imp_version: u32, current_version: u32) -> Self {
         Self {
             name_id: name_id,
             old_def_version: old_def_version,
             old_imp_version: old_imp_version,
             current_version: current_version,
         }
+    }
+
+    pub fn old_def_version(&self) -> u32 {
+        self.old_def_version
+    }
+
+    pub fn old_imp_version(&self) -> u32 {
+        self.old_imp_version
+    }
+
+    pub fn current_version(&self) -> u32 {
+        self.current_version
     }
 }
 
@@ -203,7 +254,7 @@ pub struct ObjImportHunk {
 }
 
 impl ObjImportHunk {
-    pub fn new(name_id: u32) -> Self {
+    fn new(name_id: u32) -> Self {
         Self { name_id: name_id }
     }
 }
@@ -215,11 +266,15 @@ pub struct DataPointerHunk {
 }
 
 impl DataPointerHunk {
-    pub fn new(name_id: u32, data_id: u32) -> Self {
+    fn new(name_id: u32, data_id: u32) -> Self {
         Self {
             name_id: name_id,
             data_name: data_id,
         }
+    }
+
+    pub fn data_name_id(&self) -> u32 {
+        self.data_name
     }
 }
 
@@ -230,11 +285,15 @@ pub struct XPointerHunk {
 }
 
 impl XPointerHunk {
-    pub fn new(name_id: u32, xv_id: u32) -> Self {
+    fn new(name_id: u32, xv_id: u32) -> Self {
         Self {
             name_id: name_id,
             xvector_name: xv_id,
         }
+    }
+
+    pub fn xvector_name(&self) -> u32 {
+        self.xvector_name
     }
 }
 
@@ -250,6 +309,10 @@ impl XVectorHunk {
             function_name: f_name,
         }
     }
+
+    pub fn function_name(&self) -> u32 {
+        self.function_name
+    }
 }
 
 #[derive(NameIdFromObject, Debug, Clone)]
@@ -263,6 +326,10 @@ impl ObjSourceHunk {
             name_id: name_id,
             moddate: moddate,
         }
+    }
+
+    pub fn moddate(&self) -> u32 {
+        self.moddate
     }
 }
 
@@ -288,6 +355,10 @@ impl ObjMethHunk {
             size: size,
         }
     }
+
+    pub fn size(&self) -> u32 {
+        self.size
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -301,6 +372,14 @@ impl ObjClassPair {
             base_id: base_id,
             bias: bias,
         }
+    }
+
+    pub fn base_id(&self) -> u32 {
+        self.base_id
+    }
+
+    pub fn bias(&self) -> u32 {
+        self.bias
     }
 }
 
@@ -318,6 +397,18 @@ impl ObjClassHunk {
             methods: num_methods,
             pairs: pairs,
         }
+    }
+
+    pub fn methods(&self) -> u16 {
+        self.methods
+    }
+
+    pub fn pairs(&self) -> &[ObjClassPair] {
+        &self.pairs
+    }
+
+    pub fn pairs_iter(&self) -> Iter<ObjClassPair> {
+        self.pairs.iter()
     }
 }
 
@@ -388,7 +479,7 @@ impl Default for Hunk {
 }
 
 impl Hunk {
-    pub fn new(hunk: HunkType) -> Self {
+    fn new(hunk: HunkType) -> Self {
         Self { hunk: hunk }
     }
 }
@@ -642,6 +733,7 @@ impl TryFrom<u16> for HunkParseState {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct CodeHunks {
     hunks: Vec<Hunk>,
 }

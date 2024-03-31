@@ -22,7 +22,8 @@ fn impl_name_macro(ast: &syn::DeriveInput) -> TokenStream {
     let name = &ast.ident;
     let gen = quote! {
         impl NameIdFromObject for #name {
-            fn name(&self, obj: crate::objects_m68k::Object) -> String {
+
+            fn name(&self, obj: crate::objects_m68k::MetrowerksObject) -> String {
                 obj.names()[(self.name_id + 1) as usize]
                     .name()
                     .clone()
