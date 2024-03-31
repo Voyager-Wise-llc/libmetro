@@ -3,7 +3,7 @@ use std::ffi::CStr;
 use std::slice::Iter;
 
 #[repr(u32)]
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum LibraryMagicWord {
     LibraryMagicWord = 0x4d574f42,
 }
@@ -15,7 +15,7 @@ impl Default for LibraryMagicWord {
 }
 
 #[repr(u32)]
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum LibraryProcessor {
     Unknown = 0,
     PowerPC = 0x50504320,
@@ -39,7 +39,7 @@ impl From<u32> for LibraryProcessor {
 }
 
 #[repr(u32)]
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum LibraryFlags {
     None = 0,
 }
@@ -99,6 +99,7 @@ impl FileObject {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct MetroWerksLibrary {
     proc: LibraryProcessor,
     flags: LibraryFlags,
@@ -286,10 +287,14 @@ mod tests {
 
         let l = MetroWerksLibrary::try_from(ve.as_ref()).unwrap();
 
+        println!("{:#?}", l);
         println!("{} objects.", l.file_count());
 
         for raw_file in l.file_iter() {
             let ob = MetrowerksObject::try_from(raw_file.as_bytes()).unwrap();
+
+            println!("{:#?}", ob);
+
             assert_eq!(
                 3,
                 ob.names().len(),

@@ -733,6 +733,7 @@ impl TryFrom<u16> for HunkParseState {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct CodeHunks {
     hunks: Vec<Hunk>,
 }

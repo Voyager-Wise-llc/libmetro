@@ -99,6 +99,7 @@ impl Default for ParseState {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct SymbolTable {
     routines: Vec<Routine>,
     types: TypeTable,

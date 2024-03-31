@@ -32,6 +32,7 @@ bitflags! {
    }
 }
 
+#[derive(Debug, Clone)]
 pub struct NameEntry {
     id: u32,
     name: CString,
@@ -60,6 +61,7 @@ impl NameEntry {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct ObjectHeader {
     version: u16, /* always OBJ_VERSION */
     flags: ObjectFlags,
@@ -588,6 +590,7 @@ impl ObjectHeader {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct MetrowerksObject {
     header: ObjectHeader,
     names: Vec<NameEntry>,

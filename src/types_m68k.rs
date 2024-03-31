@@ -531,6 +531,7 @@ impl Default for TypeParseState {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct TypeTable {
     table: Vec<TypeDefinition>,
 }
