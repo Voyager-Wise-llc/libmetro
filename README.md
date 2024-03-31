@@ -1,15 +1,19 @@
 libmetro
 ========
 
-This library can read and write Metrowerks Library files for  MacOS (System Software)
+***Note: This is a complete work in progess. It right now reads in a really
+simple file and hasn't been cleaned up at all. Been playing with design patterns.
+Def need to write some docs.***
+
+This library can read and (not yet) write Metrowerks Library files for MacOS (System Software)
 as of Code Warrior 6.
 
 Most of the features documented in the CodeWarrior API manual will eventually be 
-supported here.
+supported here. Right now only m68k is coded up.
 
 Hopefully this will be used to translate assembled code in ELF format from more modern 
-compilers into something CodeWarrior can work with natively, or converting into ELF to
-aid dissasembly in a tool like Ghidra or plain-ol' binutils.
+compilers into something CodeWarrior can work with natively, or converting MWOBs into
+ELF to aid dissasembly in a tool like Ghidra or plain-ol' binutils.
 
 ------
 
@@ -22,6 +26,8 @@ memory-safety, mitigations like stack-canaries, RAII, and all the things gcc can
 
 A future might be a CW compiler plugin to utilize a 'sidecar' like a RaspPi to peform
 compilation and translating ELF <-> MWOB. I think that'd be pretty neat.
+
+Not sure what to do about CFM68K support just yet.
 
 ```
 int add(int a, int b) {
