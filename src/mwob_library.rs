@@ -1,9 +1,9 @@
 use super::util;
 use std::ffi::CStr;
-use std::ffi::CString;
 use std::slice::Iter;
 
-#[derive(PartialEq)]
+#[repr(u32)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum LibraryMagicWord {
     LibraryMagicWord = 0x4d574f42,
 }
@@ -14,7 +14,8 @@ impl Default for LibraryMagicWord {
     }
 }
 
-#[derive(PartialEq)]
+#[repr(u32)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum LibraryProcessor {
     Unknown = 0,
     PowerPC = 0x50504320,
@@ -37,193 +38,42 @@ impl From<u32> for LibraryProcessor {
     }
 }
 
-#[derive(PartialEq)]
-pub enum LibraryHeaderFlags {
+#[repr(u32)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum LibraryFlags {
     None = 0,
 }
-
-pub struct LibraryHeader {
-    proc: LibraryProcessor,
-    flags: LibraryHeaderFlags,
-    version: u32,
-    code_size: u32,
-    data_size: u32,
-    num_object_files: u32,
-}
-
-impl Default for LibraryHeader {
-    fn default() -> Self {
-        Self {
-            proc: LibraryProcessor::Unknown,
-            flags: LibraryHeaderFlags::None,
-            version: 0,
-            code_size: 0,
-            data_size: 0,
-            num_object_files: 0,
-        }
-    }
-}
-
-impl LibraryHeader {
-    pub fn proc(self, proc: LibraryProcessor) -> Self {
-        Self {
-            proc: proc,
-            flags: self.flags,
-            version: self.version,
-            code_size: self.code_size,
-            data_size: self.data_size,
-            num_object_files: self.num_object_files,
-        }
-    }
-
-    pub fn flags(self, flags: LibraryHeaderFlags) -> Self {
-        Self {
-            proc: self.proc,
-            flags: flags,
-            version: self.version,
-            code_size: self.code_size,
-            data_size: self.data_size,
-            num_object_files: self.num_object_files,
-        }
-    }
-
-    pub fn version(self, version: u32) -> Self {
-        Self {
-            proc: self.proc,
-            flags: self.flags,
-            version: version,
-            code_size: self.code_size,
-            data_size: self.data_size,
-            num_object_files: self.num_object_files,
-        }
-    }
-
-    pub fn code_size(self, code_size: u32) -> Self {
-        Self {
-            proc: self.proc,
-            flags: self.flags,
-            version: self.version,
-            code_size: code_size,
-            data_size: self.data_size,
-            num_object_files: self.num_object_files,
-        }
-    }
-
-    pub fn data_size(self, data_size: u32) -> Self {
-        Self {
-            proc: self.proc,
-            flags: self.flags,
-            version: self.version,
-            code_size: self.code_size,
-            data_size: data_size,
-            num_object_files: self.num_object_files,
-        }
-    }
-
-    pub fn num_object_files(self, num_object_files: u32) -> Self {
-        Self {
-            proc: self.proc,
-            flags: self.flags,
-            version: self.version,
-            code_size: self.code_size,
-            data_size: self.data_size,
-            num_object_files: num_object_files,
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct FileHeader {
-    moddate: u32,
-    filename: CString,
-    fullpathname: CString,
-    object_start: u32,
-    object_size: u32,
-}
-
-impl FileHeader {
-    pub fn new() -> Self {
-        Self {
-            moddate: 0,
-            filename: CString::new("").unwrap(),
-            fullpathname: CString::new("").unwrap(),
-            object_start: 0,
-            object_size: 0,
-        }
-    }
-    pub fn mod_date(self, moddate: u32) -> Self {
-        Self {
-            moddate: moddate,
-            filename: self.filename,
-            fullpathname: self.fullpathname,
-            object_start: self.object_start,
-            object_size: self.object_size,
-        }
-    }
-
-    pub fn filename(self, filename: CString) -> Self {
-        Self {
-            moddate: self.moddate,
-            filename: filename.clone(),
-            fullpathname: self.fullpathname,
-            object_start: self.object_start,
-            object_size: self.object_size,
-        }
-    }
-
-    pub fn fullpathname(self, fullpathname: CString) -> Self {
-        Self {
-            moddate: self.moddate,
-            filename: self.filename,
-            fullpathname: fullpathname.clone(),
-            object_start: self.object_start,
-            object_size: self.object_size,
-        }
-    }
-
-    pub fn object_start(self, object_start: u32) -> Self {
-        Self {
-            moddate: self.moddate,
-            filename: self.filename,
-            fullpathname: self.fullpathname,
-            object_start: object_start,
-            object_size: self.object_size,
-        }
-    }
-
-    pub fn object_size(self, object_size: u32) -> Self {
-        Self {
-            moddate: self.moddate,
-            filename: self.filename,
-            fullpathname: self.fullpathname,
-            object_start: self.object_start,
-            object_size: object_size,
-        }
-    }
-
-    pub fn start(&self) -> usize {
-        self.object_start as usize
-    }
-
-    pub fn end(&self) -> usize {
-        (self.object_start + self.object_size) as usize
-    }
-
-    pub fn length(&self) -> usize {
-        self.object_size as usize
+impl LibraryFlags {
+    fn default() -> LibraryFlags {
+        LibraryFlags::None
     }
 }
 
 #[derive(Debug, Clone)]
 pub struct FileObject {
-    header: FileHeader,
+    moddate: u32,
+    file_name: String,
+    full_path: String,
     data: Vec<u8>,
 }
 
-impl FileObject {
-    pub fn new(header: FileHeader, data: &[u8]) -> Self {
+impl Default for FileObject {
+    fn default() -> Self {
         Self {
-            header: header,
+            moddate: 0,
+            file_name: String::new(),
+            full_path: String::new(),
+            data: vec![],
+        }
+    }
+}
+
+impl FileObject {
+    fn new(moddate: u32, file_name: String, full_path: String, data: &[u8]) -> Self {
+        Self {
+            moddate: moddate,
+            file_name: file_name,
+            full_path: full_path,
             data: data.to_vec(),
         }
     }
@@ -232,22 +82,59 @@ impl FileObject {
         self.data.as_slice()
     }
 
-    pub fn filename(&self) -> &CStr {
-        self.header.filename.as_c_str()
+    pub fn length(&self) -> usize {
+        self.data.len()
+    }
+
+    pub fn filename(&self) -> &str {
+        self.file_name.as_str()
+    }
+
+    pub fn fullpath(&self) -> &str {
+        self.full_path.as_str()
+    }
+
+    pub fn moddate(&self) -> u32 {
+        self.moddate
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct MetroWerksLibrary {
-    header: LibraryHeader,
+    proc: LibraryProcessor,
+    flags: LibraryFlags,
+    version: u32,
     files: Vec<FileObject>,
 }
 
 impl MetroWerksLibrary {
-    pub fn new(header: LibraryHeader, files: Vec<FileObject>) -> Self {
+    fn new(
+        proc: LibraryProcessor,
+        flags: LibraryFlags,
+        version: u32,
+        files: Vec<FileObject>,
+    ) -> Self {
         Self {
-            header: header,
+            proc: proc,
+            flags: flags,
+            version: version,
             files: files,
         }
+    }
+
+    #[inline(always)]
+    pub fn proc(&self) -> LibraryProcessor {
+        self.proc
+    }
+
+    #[inline(always)]
+    pub fn flags(&self) -> LibraryFlags {
+        self.flags
+    }
+
+    #[inline(always)]
+    pub fn version(&self) -> u32 {
+        self.version
     }
 
     #[inline(always)]
@@ -259,183 +146,108 @@ impl MetroWerksLibrary {
     pub fn file_count(&self) -> usize {
         self.files.len()
     }
-
-    pub fn header(&self) -> &LibraryHeader {
-        &self.header
-    }
 }
 
 #[derive(PartialEq)]
 enum LibraryParseState {
-    LibraryHeaderStart,
-    LibraryHeaderMagicWord,
-    LibraryHeaderProc,
-    LibraryHeaderFlags,
-    LibraryHeaderVersion,
-    LibraryHeaderCodeSize,
-    LibraryHeaderDataSize,
-    LibraryHeaderNumObjFiles,
+    Start,
+    ParseLibraryHeader,
 
     FileStart,
-    FileHeaderModDate,
-    FileHeaderFileName,
-    FileHeaderFullPathName,
-    FileHeaderObjStart,
-    FileHeaderObjSize,
-    FileDataBytes,
-    FileCommit,
+    CommitFile,
 
     End,
 }
 
 impl Default for LibraryParseState {
     fn default() -> Self {
-        LibraryParseState::LibraryHeaderStart
+        LibraryParseState::Start
     }
 }
 
 pub fn parse_library(value: &[u8]) -> Result<MetroWerksLibrary, String> {
-    let mut header: LibraryHeader = LibraryHeader::default();
+    let mut data: &[u8] = value;
     let mut files: Vec<FileObject> = Vec::new();
-    let mut curr_file_header: FileHeader = FileHeader::new();
-    let mut curr_file_data = <&[u8]>::default();
+    let mut current_file = FileObject::default();
     let mut remaining_files = 0;
 
-    let mut offset: usize = 28; // We don't use this var until later, so this is okay.
+    let mut proc = LibraryProcessor::default();
+    let mut flags = LibraryFlags::default();
+    let mut version: u32 = 0;
 
     let mut state: LibraryParseState = LibraryParseState::default();
     while state != LibraryParseState::End {
         state = match state {
-            LibraryParseState::LibraryHeaderStart => LibraryParseState::LibraryHeaderMagicWord,
-            LibraryParseState::LibraryHeaderMagicWord => {
-                let x = util::convert_be_u32(&value[0..4].try_into().unwrap());
+            LibraryParseState::Start => LibraryParseState::ParseLibraryHeader,
+            LibraryParseState::ParseLibraryHeader => {
+                let magic = util::convert_be_u32(&data[0..4].try_into().unwrap());
 
-                if x != LibraryMagicWord::LibraryMagicWord as u32 {
+                if magic != LibraryMagicWord::LibraryMagicWord as u32 {
                     return Err(format!(
                         "Bad Magic Word: Expected: {}, got: {}",
                         LibraryMagicWord::LibraryMagicWord as u32,
-                        x
+                        magic
                     ));
                 }
 
-                LibraryParseState::LibraryHeaderProc
+                let proc_u32 = util::convert_be_u32(&data[4..8].try_into().unwrap());
+                proc = LibraryProcessor::from(proc_u32);
+
+                let flags_u32 = util::convert_be_u32(&data[8..12].try_into().unwrap());
+                if flags_u32 != 0 {
+                    return Err(format!("Bad flags for header, got: {}", flags_u32));
+                }
+                flags = LibraryFlags::None;
+
+                version = util::convert_be_u32(&data[12..16].try_into().unwrap());
+
+                let num_objects = util::convert_be_u32(&data[24..28].try_into().unwrap());
+
+                if num_objects != 0 {
+                    data = &data[28..];
+                    remaining_files = num_objects;
+                    LibraryParseState::FileStart
+                } else {
+                    LibraryParseState::End
+                }
             }
-            LibraryParseState::LibraryHeaderProc => {
-                let x = util::convert_be_u32(&value[4..8].try_into().unwrap());
 
-                header = header.proc(LibraryProcessor::from(x));
-
-                LibraryParseState::LibraryHeaderFlags
-            }
-            LibraryParseState::LibraryHeaderFlags => {
-                // This field is not used per the CW11 API documentation (8..12)
-                header = header.flags(LibraryHeaderFlags::None);
-
-                LibraryParseState::LibraryHeaderVersion
-            }
-            LibraryParseState::LibraryHeaderVersion => {
-                let x = util::convert_be_u32(&value[12..16].try_into().unwrap());
-
-                header = header.version(x);
-
-                LibraryParseState::LibraryHeaderCodeSize
-            }
-            LibraryParseState::LibraryHeaderCodeSize => {
-                let x = util::convert_be_u32(&value[16..20].try_into().unwrap());
-
-                header = header.code_size(x);
-
-                LibraryParseState::LibraryHeaderDataSize
-            }
-            LibraryParseState::LibraryHeaderDataSize => {
-                let x = util::convert_be_u32(&value[20..24].try_into().unwrap());
-
-                header = header.data_size(x);
-
-                LibraryParseState::LibraryHeaderNumObjFiles
-            }
-            LibraryParseState::LibraryHeaderNumObjFiles => {
-                let x = util::convert_be_u32(&value[24..28].try_into().unwrap());
-
-                header = header.num_object_files(x);
-                remaining_files = x;
-
-                // Next stage starts processing the file objects
-                LibraryParseState::FileStart
-            }
             LibraryParseState::FileStart => {
-                curr_file_header = FileHeader::new();
-                curr_file_data = <&[u8]>::default();
+                let file_moddate = util::convert_be_u32(&data[0..4].try_into().unwrap());
+                let file_name_loc = util::convert_be_u32(&data[4..8].try_into().unwrap()) as usize;
+                let full_path_loc = util::convert_be_u32(&data[8..12].try_into().unwrap()) as usize;
+                let data_start: usize =
+                    util::convert_be_u32(&data[12..16].try_into().unwrap()) as usize;
+                let data_size: usize =
+                    util::convert_be_u32(&data[16..20].try_into().unwrap()) as usize;
 
-                LibraryParseState::FileHeaderModDate
-            }
-            LibraryParseState::FileHeaderModDate => {
-                let x = util::convert_be_u32(&value[offset..(offset + 4)].try_into().unwrap());
-
-                curr_file_header = curr_file_header.mod_date(x);
-                offset += 4;
-
-                LibraryParseState::FileHeaderFileName
-            }
-            LibraryParseState::FileHeaderFileName => {
-                let x = util::convert_be_u32(&value[offset..(offset + 4)].try_into().unwrap());
-
-                let file_name = CStr::from_bytes_until_nul(&value[x as usize..])
+                // The file_name, full_path, and bytes are relative to the LIBRARY Header not the FILE Header
+                let file_name = CStr::from_bytes_until_nul(&value[file_name_loc..])
+                    .unwrap()
+                    .to_str()
                     .unwrap()
                     .to_owned();
 
-                offset += 4;
-                curr_file_header = curr_file_header.filename(file_name);
-
-                LibraryParseState::FileHeaderFullPathName
-            }
-            LibraryParseState::FileHeaderFullPathName => {
-                let x = util::convert_be_u32(&value[offset..(offset + 4)].try_into().unwrap());
-
-                let full_file_path = if x == 0 {
-                    CString::new("").unwrap()
+                let full_path: String = if full_path_loc == 0 {
+                    String::new()
                 } else {
-                    CStr::from_bytes_until_nul(&value[x as usize..])
+                    CStr::from_bytes_until_nul(&value[full_path_loc as usize..])
+                        .unwrap()
+                        .to_str()
                         .unwrap()
                         .to_owned()
                 };
 
-                offset += 4;
-                curr_file_header = curr_file_header.fullpathname(full_file_path);
+                // The bytes are relative to the LIBRARY Header not the FILE Header
+                let bytes = &value[data_start..(data_start + data_size)];
+                data = &data[20..];
 
-                LibraryParseState::FileHeaderObjStart
+                current_file = FileObject::new(file_moddate, file_name, full_path, bytes);
+
+                LibraryParseState::CommitFile
             }
-            LibraryParseState::FileHeaderObjStart => {
-                let x = util::convert_be_u32(&value[offset..(offset + 4)].try_into().unwrap());
-
-                curr_file_header = curr_file_header.object_start(x);
-                offset += 4;
-
-                LibraryParseState::FileHeaderObjSize
-            }
-            LibraryParseState::FileHeaderObjSize => {
-                let x = util::convert_be_u32(&value[offset..(offset + 4)].try_into().unwrap());
-
-                curr_file_header = curr_file_header.object_size(x);
-                offset += 4;
-
-                LibraryParseState::FileDataBytes
-            }
-            LibraryParseState::FileDataBytes => {
-                let start: usize = curr_file_header.start();
-                //let size: usize = curr_file_header.object_size;
-                let end = curr_file_header.end();
-
-                let bytes = &value[start..end];
-
-                curr_file_data = bytes;
-                offset += curr_file_header.length();
-
-                LibraryParseState::FileCommit
-            }
-            LibraryParseState::FileCommit => {
-                let file = FileObject::new(curr_file_header.clone(), curr_file_data);
-                files.push(file);
+            LibraryParseState::CommitFile => {
+                files.push(current_file.clone());
                 remaining_files -= 1;
 
                 if remaining_files == 0 {
@@ -448,7 +260,7 @@ pub fn parse_library(value: &[u8]) -> Result<MetroWerksLibrary, String> {
         }
     }
 
-    Ok(MetroWerksLibrary::new(header, files))
+    Ok(MetroWerksLibrary::new(proc, flags, version, files))
 }
 
 impl TryFrom<&[u8]> for MetroWerksLibrary {
@@ -461,7 +273,7 @@ impl TryFrom<&[u8]> for MetroWerksLibrary {
 
 #[cfg(test)]
 mod tests {
-    use crate::objects_m68k::Object;
+    use crate::objects_m68k::MetrowerksObject;
 
     use super::*;
     use std::fs::File;
@@ -475,10 +287,14 @@ mod tests {
 
         let l = MetroWerksLibrary::try_from(ve.as_ref()).unwrap();
 
+        println!("{:#?}", l);
         println!("{} objects.", l.file_count());
 
         for raw_file in l.file_iter() {
-            let ob = Object::try_from(raw_file.as_bytes()).unwrap();
+            let ob = MetrowerksObject::try_from(raw_file.as_bytes()).unwrap();
+
+            println!("{:#?}", ob);
+
             assert_eq!(
                 3,
                 ob.names().len(),

@@ -1,9 +1,9 @@
 use std::collections::VecDeque;
 
-use crate::objects_m68k::Object;
+use crate::objects_m68k::MetrowerksObject;
 
 pub trait NameIdFromObject: Sized {
-    fn name(&self, obj: Object) -> String;
+    fn name(&self, obj: MetrowerksObject) -> String;
 }
 
 const NAMEHASH: u16 = 1024;
@@ -35,13 +35,4 @@ pub fn convert_be_u16(data: &[u8; 2]) -> u16 {
 pub fn convert_be_u32(data: &[u8; 4]) -> u32 {
     let res: u32 = unsafe { std::mem::transmute(*data) };
     u32::from_be(res)
-}
-
-#[allow(unused_imports)]
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn hashcheck_1() {}
 }

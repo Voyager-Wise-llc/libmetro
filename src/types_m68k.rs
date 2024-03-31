@@ -1,4 +1,4 @@
-use std::slice::Iter;
+use std::{ops::Range, slice::Iter};
 
 use super::util::{convert_be_u16, convert_be_u32, NameIdFromObject};
 
@@ -143,6 +143,14 @@ impl Pointer {
             typ: typ,
         }
     }
+
+    pub fn number(&self) -> u16 {
+        self.number
+    }
+
+    pub fn data_type(&self) -> &DataType {
+        &self.typ
+    }
 }
 #[derive(Debug, Clone)]
 pub struct Array {
@@ -158,6 +166,18 @@ impl Array {
             esize: esize,
             typ: typ,
         }
+    }
+
+    pub fn size(&self) -> u32 {
+        self.size
+    }
+
+    pub fn esize(&self) -> u32 {
+        self.esize
+    }
+
+    pub fn data_type(&self) -> &DataType {
+        &self.typ
     }
 }
 
@@ -175,6 +195,14 @@ impl StructMember {
             offset: offset,
         }
     }
+
+    pub fn data_type(&self) -> &DataType {
+        &self.typ
+    }
+
+    pub fn offset(&self) -> u32 {
+        self.offset
+    }
 }
 
 #[derive(NameIdFromObject, Debug, Clone)]
@@ -191,6 +219,18 @@ impl Struct {
             members: members,
         }
     }
+
+    pub fn size(&self) -> u32 {
+        self.size
+    }
+
+    pub fn members(&self) -> &[StructMember] {
+        &self.members
+    }
+
+    pub fn member_iter(&self) -> Iter<StructMember> {
+        self.members.iter()
+    }
 }
 
 #[derive(NameIdFromObject, Debug, Clone)]
@@ -205,21 +245,37 @@ impl EnumMember {
             value: value,
         }
     }
+
+    pub fn value(&self) -> u32 {
+        self.value
+    }
 }
 
 #[derive(NameIdFromObject, Debug, Clone)]
 pub struct Enum {
     name_id: u32,
-    typ: BasicDataType,
+    typ: DataType,
     members: Vec<EnumMember>,
 }
 impl Enum {
     fn new(name: u32, typ: BasicDataType, members: Vec<EnumMember>) -> Enum {
         Self {
             name_id: name,
-            typ: typ,
+            typ: DataType::BasicDataType(typ),
             members: members,
         }
+    }
+
+    pub fn members(&self) -> &[EnumMember] {
+        &self.members
+    }
+
+    pub fn member_iter(&self) -> Iter<EnumMember> {
+        self.members.iter()
+    }
+
+    pub fn data_type(&self) -> &DataType {
+        &self.typ
     }
 }
 
@@ -241,6 +297,22 @@ impl PascalArray {
             name_id: name,
         }
     }
+
+    pub fn is_packed(&self) -> bool {
+        self.packed
+    }
+
+    pub fn size(&self) -> u32 {
+        self.size
+    }
+
+    pub fn iid(&self) -> u32 {
+        self.iid
+    }
+
+    pub fn eid(&self) -> &DataType {
+        &self.eid
+    }
 }
 
 #[derive(NameIdFromObject, Debug, Clone)]
@@ -261,6 +333,28 @@ impl PascalRange {
             upper: hbound,
         }
     }
+
+    pub fn lower(&self) -> u32 {
+        self.lower
+    }
+
+    pub fn upper(&self) -> u32 {
+        self.upper
+    }
+
+    pub fn size(&self) -> u32 {
+        self.size
+    }
+
+    pub fn data_type(&self) -> &DataType {
+        &self.typ
+    }
+}
+
+impl Into<Range<u32>> for PascalRange {
+    fn into(self) -> Range<u32> {
+        self.lower..self.upper
+    }
 }
 
 #[derive(NameIdFromObject, Debug, Clone)]
@@ -277,6 +371,14 @@ impl PascalSet {
             size: size,
         }
     }
+
+    pub fn base(&self) -> &DataType {
+        &self.base
+    }
+
+    pub fn size(&self) -> usize {
+        self.size as usize
+    }
 }
 
 #[derive(NameIdFromObject, Debug, Clone)]
@@ -291,6 +393,14 @@ impl PascalEnum {
             members: members,
         }
     }
+
+    pub fn members_iter(&self) -> Iter<u32> {
+        self.members.iter()
+    }
+
+    pub fn members(&self) -> &[u32] {
+        &self.members
+    }
 }
 
 #[derive(NameIdFromObject, Debug, Clone)]
@@ -304,6 +414,10 @@ impl PascalString {
             name_id: name,
             size: size,
         }
+    }
+
+    pub fn size(&self) -> u32 {
+        self.size
     }
 }
 
@@ -417,6 +531,7 @@ impl Default for TypeParseState {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct TypeTable {
     table: Vec<TypeDefinition>,
 }
@@ -428,7 +543,7 @@ impl Default for TypeTable {
 }
 
 impl TypeTable {
-    pub fn types(&self) -> &Vec<TypeDefinition> {
+    pub fn types(&self) -> &[TypeDefinition] {
         &self.table
     }
 
@@ -437,13 +552,13 @@ impl TypeTable {
     }
 }
 
-pub struct TypeTableInput<'a> {
+pub(crate) struct TypeTableInput<'a> {
     p: &'a [u8],
     num: u32,
 }
 
 impl<'a> TypeTableInput<'a> {
-    pub fn new(p: &'a [u8], num_members: u32) -> Self {
+    pub(crate) fn new(p: &'a [u8], num_members: u32) -> Self {
         Self {
             p: p,
             num: num_members,
