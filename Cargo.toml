@@ -1,0 +1,15 @@
+workspace = { members = ["src/proc_macros"] }
+[package]
+name = "libmetro"
+version = "0.1.0"
+edition = "2021"
+exclude = ["/test"]
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies.libmetro-proc_macros]
+path = "src/proc_macros"
+version = "0.1.0"  # Same as main version
+
+[dependencies]
+bitflags = "2.5.0"

@@ -1,0 +1,16 @@
+[package]
+name = "libmetro-proc_macros"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+proc-macro = true
+path = "mod.rs"
+
+[dependencies]
+proc-macro2.version = "1.0"
+quote.version = "1.0"
+syn.version = "1.0"
+syn.features = ["full"]  # you may need "full" features
