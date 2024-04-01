@@ -2,6 +2,9 @@ use std::collections::VecDeque;
 
 use crate::objects_m68k::MetrowerksObject;
 
+pub trait NameIdFromObject<'a>: Sized {
+    fn name(&'a self, obj: &'a MetrowerksObject) -> &str;
+}
 
 }
 
