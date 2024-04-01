@@ -6,6 +6,8 @@ pub trait NameIdFromObject<'a>: Sized {
     fn name(&'a self, obj: &'a MetrowerksObject) -> &str;
 }
 
+pub(crate) trait RawLength: Sized {
+    fn raw_length(&self) -> usize;
 }
 
 const NAMEHASH: u16 = 1024;
@@ -37,4 +39,14 @@ pub fn convert_be_u16(data: &[u8; 2]) -> u16 {
 pub fn convert_be_u32(data: &[u8; 4]) -> u32 {
     let res: u32 = unsafe { std::mem::transmute(*data) };
     u32::from_be(res)
+}
+
+pub fn convert_be_i16(data: &[u8; 2]) -> i16 {
+    let res: i16 = unsafe { std::mem::transmute(*data) };
+    i16::from_be(res)
+}
+
+pub fn convert_be_i32(data: &[u8; 4]) -> i32 {
+    let res: i32 = unsafe { std::mem::transmute(*data) };
+    i32::from_be(res)
 }
