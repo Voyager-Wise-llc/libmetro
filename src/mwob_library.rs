@@ -10,24 +10,12 @@ pub enum LibraryMagicWord {
     LibraryMagicWord = 0x4d574f42,
 }
 
-impl Default for LibraryMagicWord {
-    fn default() -> Self {
-        LibraryMagicWord::LibraryMagicWord
-    }
-}
-
 #[repr(u32)]
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum LibraryProcessor {
     Unknown = 0,
     PowerPC = 0x50504320,
     M68k = 0x4d36384b,
-}
-
-impl Default for LibraryProcessor {
-    fn default() -> Self {
-        LibraryProcessor::Unknown
-    }
 }
 
 impl From<u32> for LibraryProcessor {
@@ -134,7 +122,7 @@ pub fn parse_library(value: &[u8]) -> Result<MetroWerksLibrary, String> {
     let mut files: Vec<FileObject> = Vec::new();
     let mut remaining_files = 0;
 
-    let mut proc = LibraryProcessor::default();
+    let mut proc = LibraryProcessor::Unknown;
     let mut flags = LibraryFlags::default();
     let mut version: u32 = 0;
 

@@ -625,15 +625,6 @@ pub struct TypeDefinition {
     id: u32,
 }
 
-impl Default for TypeDefinition {
-    fn default() -> Self {
-        Self {
-            typ: OtherDataType::Undefined,
-            id: 0,
-        }
-    }
-}
-
 impl RawLength for TypeDefinition {
     fn raw_length(&self) -> usize {
         2 + self.typ.raw_length()

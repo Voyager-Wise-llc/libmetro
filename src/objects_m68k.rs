@@ -13,12 +13,6 @@ pub enum ObjectMagicWord {
     ObjectMagicWord = 0xfeedbead,
 }
 
-impl Default for ObjectMagicWord {
-    fn default() -> Self {
-        ObjectMagicWord::ObjectMagicWord
-    }
-}
-
 bitflags! {
     #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
     pub struct ObjectFlags: u16 {
@@ -33,15 +27,6 @@ bitflags! {
 pub struct NameEntry {
     id: u32,
     name: String,
-}
-
-impl Default for NameEntry {
-    fn default() -> Self {
-        Self {
-            id: 0,
-            name: String::new(),
-        }
-    }
 }
 
 impl Display for NameEntry {
@@ -86,6 +71,7 @@ pub struct ObjectHeader {
     reserved4: u8,        /* Reserved by Metrowerks. This field must contain the value 0L. */
 }
 
+//TODO: This sucks but its fine cause ObjectHeader is going to go away soon
 impl Default for ObjectHeader {
     fn default() -> Self {
         Self {
@@ -660,7 +646,6 @@ enum ObjectParseState {
 
     ProcessNameTable,
     ProcessName,
-    ProcessObjectData,
 
     End,
 }
@@ -679,8 +664,6 @@ fn parse_object(value: &[u8]) -> Result<MetrowerksObject, String> {
     let mut name_bytes: &[u8] = <&[u8]>::default();
     let mut name_table: Vec<NameEntry> = vec![];
     let mut name_id = 0;
-
-    let mut code_objects: CodeHunks = CodeHunks::default();
 
     let mut state: ObjectParseState = ObjectParseState::default();
     while state != ObjectParseState::End {
@@ -719,16 +702,6 @@ fn parse_object(value: &[u8]) -> Result<MetrowerksObject, String> {
                 let x = util::convert_be_u32(&value[8..12].try_into().unwrap());
 
                 header = header.obj_size(x);
-
-                ObjectParseState::ProcessObjectData
-            }
-            ObjectParseState::ProcessObjectData => {
-                let start = header.obj_start();
-                let end = header.obj_end();
-
-                let object_bytes = &value[start..end];
-
-                code_objects = CodeHunks::try_from(object_bytes).unwrap();
 
                 ObjectParseState::ObjectHeaderNameTableOffset
             }
@@ -923,6 +896,16 @@ fn parse_object(value: &[u8]) -> Result<MetrowerksObject, String> {
         Option::Some(SymbolTable::try_from(symbol_bytes).unwrap())
     } else {
         Option::None
+    };
+
+    // Object code processing
+    let code_objects = {
+        let start = header.obj_start();
+        let end = header.obj_end();
+
+        let object_bytes = &value[start..end];
+
+        CodeHunks::try_from(object_bytes).unwrap()
     };
 
     Ok(MetrowerksObject {

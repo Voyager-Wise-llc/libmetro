@@ -20,6 +20,7 @@ struct SymbolTableHeader {
     reserved: [u32; 4],
 }
 
+// TODO: This also sucks and needs refactoring
 impl Default for SymbolTableHeader {
     fn default() -> Self {
         Self {
@@ -299,16 +300,6 @@ pub struct Routine {
     typ: RoutineType,
     statement_locations: Vec<StatementLocation>,
     local_vars: Vec<LocalVar>,
-}
-
-impl Default for Routine {
-    fn default() -> Self {
-        Self {
-            typ: RoutineType::Unknown,
-            statement_locations: vec![],
-            local_vars: vec![],
-        }
-    }
 }
 
 impl TryFrom<&[u8]> for Routine {

@@ -7,20 +7,8 @@ use super::util::{convert_be_u16, convert_be_u32, NameIdFromObject};
 #[derive(Debug, Clone)]
 pub struct ReservedHunk {}
 
-impl Default for ReservedHunk {
-    fn default() -> Self {
-        panic!("Encountered Reserved Hunk");
-    }
-}
-
 #[derive(Debug, Clone)]
 pub struct ObjSimpleHunk {}
-
-impl Default for ObjSimpleHunk {
-    fn default() -> Self {
-        Self {}
-    }
-}
 
 impl RawLength for ObjSimpleHunk {
     fn raw_length(&self) -> usize {
@@ -43,18 +31,6 @@ pub struct ObjCodeHunk {
     sym_decl_offset: u32,
     special_flag: ObjCodeFlag,
     code: Vec<u8>,
-}
-
-impl Default for ObjCodeHunk {
-    fn default() -> Self {
-        Self {
-            name_id: 0,
-            sym_offset: 0,
-            sym_decl_offset: 0,
-            special_flag: ObjCodeFlag::None,
-            code: vec![],
-        }
-    }
 }
 
 impl RawLength for ObjCodeHunk {
@@ -356,14 +332,6 @@ pub struct Hunk {
     hunk: HunkType,
 }
 
-impl Default for Hunk {
-    fn default() -> Self {
-        Self {
-            hunk: HunkType::Undefined,
-        }
-    }
-}
-
 #[allow(non_camel_case_types)]
 #[repr(u16)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -625,12 +593,6 @@ pub struct CodeHunks {
     hunks: Vec<Hunk>,
 }
 
-impl Default for CodeHunks {
-    fn default() -> Self {
-        Self { hunks: vec![] }
-    }
-}
-
 impl CodeHunks {
     pub fn iter(&self) -> Iter<Hunk> {
         self.hunks.iter()
@@ -658,17 +620,13 @@ fn parse_code(value: &[u8]) -> Result<CodeHunks, String> {
             }
             HunkParseState::ParseObjSimpleHunk(tag) => {
                 let hunk = match tag {
-                    RawHunkType::HUNK_START => HunkType::Start(ObjSimpleHunk::default()),
-                    RawHunkType::HUNK_END => HunkType::End(ObjSimpleHunk::default()),
+                    RawHunkType::HUNK_START => HunkType::Start(ObjSimpleHunk {}),
+                    RawHunkType::HUNK_END => HunkType::End(ObjSimpleHunk {}),
 
-                    RawHunkType::HUNK_MULTIDEF_GLOBAL => {
-                        HunkType::GlobalMultiDef(ObjSimpleHunk::default())
-                    }
-                    RawHunkType::HUNK_OVERLOAD_GLOBAL => {
-                        HunkType::GlobalOverload(ObjSimpleHunk::default())
-                    }
+                    RawHunkType::HUNK_MULTIDEF_GLOBAL => HunkType::GlobalMultiDef(ObjSimpleHunk {}),
+                    RawHunkType::HUNK_OVERLOAD_GLOBAL => HunkType::GlobalOverload(ObjSimpleHunk {}),
 
-                    RawHunkType::HUNK_CFM_EXPORT => HunkType::CFMExport(ObjSimpleHunk::default()),
+                    RawHunkType::HUNK_CFM_EXPORT => HunkType::CFMExport(ObjSimpleHunk {}),
 
                     _ => {
                         return Err(format!(
@@ -682,18 +640,16 @@ fn parse_code(value: &[u8]) -> Result<CodeHunks, String> {
             }
             HunkParseState::ParseReservedHunk(tag) => {
                 let hunk = match tag {
-                    RawHunkType::HUNK_LIBRARY_BREAK => {
-                        HunkType::LibraryBreak(ReservedHunk::default())
-                    }
+                    RawHunkType::HUNK_LIBRARY_BREAK => HunkType::LibraryBreak(ReservedHunk {}),
 
-                    RawHunkType::HUNK_DIFF_8BIT => HunkType::Diff8Bit(ReservedHunk::default()),
-                    RawHunkType::HUNK_DIFF_16BIT => HunkType::Diff16Bit(ReservedHunk::default()),
-                    RawHunkType::HUNK_DIFF_32BIT => HunkType::Diff32Bit(ReservedHunk::default()),
+                    RawHunkType::HUNK_DIFF_8BIT => HunkType::Diff8Bit(ReservedHunk {}),
+                    RawHunkType::HUNK_DIFF_16BIT => HunkType::Diff16Bit(ReservedHunk {}),
+                    RawHunkType::HUNK_DIFF_32BIT => HunkType::Diff32Bit(ReservedHunk {}),
 
-                    RawHunkType::HUNK_DEINIT_CODE => HunkType::DeInitCode(ReservedHunk::default()),
+                    RawHunkType::HUNK_DEINIT_CODE => HunkType::DeInitCode(ReservedHunk {}),
 
-                    RawHunkType::HUNK_ILLEGAL1 => HunkType::Illegal1(ReservedHunk::default()),
-                    RawHunkType::HUNK_ILLEGAL2 => HunkType::Illegal2(ReservedHunk::default()),
+                    RawHunkType::HUNK_ILLEGAL1 => HunkType::Illegal1(ReservedHunk {}),
+                    RawHunkType::HUNK_ILLEGAL2 => HunkType::Illegal2(ReservedHunk {}),
 
                     _ => {
                         return Err(format!(
@@ -703,7 +659,10 @@ fn parse_code(value: &[u8]) -> Result<CodeHunks, String> {
                     }
                 };
 
-                HunkParseState::CommitHunk(Hunk { hunk: hunk })
+                return Err(format!("Encountered Reserved Hunk: {:?}", hunk));
+
+                // Commit nothing cause we found reserved hunks we can't process
+                // HunkParseState::CommitHunk(Hunk { hunk: hunk })
             }
             HunkParseState::ParseObjCodeHunk(tag) => {
                 let special = match &hunks.last().unwrap().hunk {
