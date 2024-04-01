@@ -34,12 +34,6 @@ pub enum LibraryFlags {
     None = 0,
 }
 
-impl LibraryFlags {
-    fn default() -> LibraryFlags {
-        LibraryFlags::None
-    }
-}
-
 #[derive(Debug, Clone)]
 pub struct FileObject {
     moddate: u32,
@@ -101,79 +95,51 @@ impl MetroWerksLibrary {
     }
 }
 
-#[derive(PartialEq)]
-enum LibraryParseState {
-    Start,
-    ParseLibraryHeader,
+impl TryFrom<&[u8]> for MetroWerksLibrary {
+    type Error = String;
 
-    ParseFile,
+    fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
+        let magic = util::convert_be_u32(&value[0..4].try_into().unwrap());
 
-    End,
-}
+        if magic != LibraryMagicWord::LibraryMagicWord as u32 {
+            return Err(format!(
+                "Bad Magic Word: Expected: {}, got: {}",
+                LibraryMagicWord::LibraryMagicWord as u32,
+                magic
+            ));
+        }
 
-impl Default for LibraryParseState {
-    fn default() -> Self {
-        LibraryParseState::Start
-    }
-}
+        let proc_u32 = util::convert_be_u32(&value[4..8].try_into().unwrap());
+        let proc = LibraryProcessor::from(proc_u32);
 
-pub fn parse_library(value: &[u8]) -> Result<MetroWerksLibrary, String> {
-    let mut data: &[u8] = value;
-    let mut files: Vec<FileObject> = Vec::new();
-    let mut remaining_files = 0;
+        let flags_u32 = util::convert_be_u32(&value[8..12].try_into().unwrap());
+        if flags_u32 != 0 {
+            return Err(format!("Bad flags for header, got: {}", flags_u32));
+        }
+        let flags = LibraryFlags::None;
 
-    let mut proc = LibraryProcessor::Unknown;
-    let mut flags = LibraryFlags::default();
-    let mut version: u32 = 0;
+        let version = util::convert_be_u32(&value[12..16].try_into().unwrap());
 
-    let mut state: LibraryParseState = LibraryParseState::default();
-    while state != LibraryParseState::End {
-        state = match state {
-            LibraryParseState::Start => LibraryParseState::ParseLibraryHeader,
-            LibraryParseState::ParseLibraryHeader => {
-                let magic = util::convert_be_u32(&data[0..4].try_into().unwrap());
+        let num_files = util::convert_be_u32(&value[24..28].try_into().unwrap());
 
-                if magic != LibraryMagicWord::LibraryMagicWord as u32 {
-                    return Err(format!(
-                        "Bad Magic Word: Expected: {}, got: {}",
-                        LibraryMagicWord::LibraryMagicWord as u32,
-                        magic
-                    ));
-                }
+        let files = if num_files != 0 {
+            let mut obj_bytes = &value[28..];
+            let mut remaining_files = num_files;
+            let mut files = vec![];
 
-                let proc_u32 = util::convert_be_u32(&data[4..8].try_into().unwrap());
-                proc = LibraryProcessor::from(proc_u32);
-
-                let flags_u32 = util::convert_be_u32(&data[8..12].try_into().unwrap());
-                if flags_u32 != 0 {
-                    return Err(format!("Bad flags for header, got: {}", flags_u32));
-                }
-                flags = LibraryFlags::None;
-
-                version = util::convert_be_u32(&data[12..16].try_into().unwrap());
-
-                let num_objects = util::convert_be_u32(&data[24..28].try_into().unwrap());
-
-                if num_objects != 0 {
-                    data = &data[28..];
-                    remaining_files = num_objects;
-                    LibraryParseState::ParseFile
-                } else {
-                    LibraryParseState::End
-                }
-            }
-
-            LibraryParseState::ParseFile => {
-                let file_moddate = util::convert_be_u32(&data[0..4].try_into().unwrap());
-                let file_name_loc = util::convert_be_u32(&data[4..8].try_into().unwrap()) as usize;
-                let full_path_loc = util::convert_be_u32(&data[8..12].try_into().unwrap()) as usize;
+            while remaining_files > 0 {
+                let file_moddate = util::convert_be_u32(&obj_bytes[0..4].try_into().unwrap());
+                let file_name_loc =
+                    util::convert_be_u32(&obj_bytes[4..8].try_into().unwrap()) as usize;
+                let full_path_loc =
+                    util::convert_be_u32(&obj_bytes[8..12].try_into().unwrap()) as usize;
                 let data_start: usize =
-                    util::convert_be_u32(&data[12..16].try_into().unwrap()) as usize;
+                    util::convert_be_u32(&obj_bytes[12..16].try_into().unwrap()) as usize;
                 let data_size: usize =
-                    util::convert_be_u32(&data[16..20].try_into().unwrap()) as usize;
+                    util::convert_be_u32(&obj_bytes[16..20].try_into().unwrap()) as usize;
 
                 // The file_name, full_path, and bytes are relative to the LIBRARY Header not the FILE Header
-                let file_name = CStr::from_bytes_until_nul(&value[file_name_loc..])
+                let file_name = CStr::from_bytes_until_nul(&obj_bytes[file_name_loc..])
                     .unwrap()
                     .to_str()
                     .unwrap()
@@ -182,7 +148,7 @@ pub fn parse_library(value: &[u8]) -> Result<MetroWerksLibrary, String> {
                 let full_path: String = if full_path_loc == 0 {
                     String::new()
                 } else {
-                    CStr::from_bytes_until_nul(&value[full_path_loc as usize..])
+                    CStr::from_bytes_until_nul(&obj_bytes[full_path_loc as usize..])
                         .unwrap()
                         .to_str()
                         .unwrap()
@@ -191,7 +157,7 @@ pub fn parse_library(value: &[u8]) -> Result<MetroWerksLibrary, String> {
 
                 // The bytes are relative to the LIBRARY Header not the FILE Header
                 let bytes = &value[data_start..(data_start + data_size)];
-                data = &data[20..];
+                obj_bytes = &obj_bytes[20..];
 
                 files.push(FileObject {
                     moddate: file_moddate,
@@ -201,31 +167,19 @@ pub fn parse_library(value: &[u8]) -> Result<MetroWerksLibrary, String> {
                 });
 
                 remaining_files -= 1;
-
-                if remaining_files == 0 {
-                    LibraryParseState::End
-                } else {
-                    LibraryParseState::ParseFile
-                }
             }
 
-            _ => todo!(),
-        }
-    }
+            files
+        } else {
+            vec![]
+        };
 
-    Ok(MetroWerksLibrary {
-        proc: proc,
-        flags: flags,
-        version: version,
-        files: files,
-    })
-}
-
-impl TryFrom<&[u8]> for MetroWerksLibrary {
-    type Error = String;
-
-    fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
-        parse_library(value)
+        Ok(MetroWerksLibrary {
+            proc: proc,
+            flags: flags,
+            version: version,
+            files: files,
+        })
     }
 }
 
