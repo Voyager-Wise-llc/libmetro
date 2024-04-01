@@ -1,6 +1,8 @@
 use std::ops::Deref;
 
-use crate::util::RawLength;
+use chrono::{DateTime, Local};
+
+use crate::util::{from_mac_datetime, RawLength};
 
 use super::util::{convert_be_u16, convert_be_u32, NameIdFromObject};
 
@@ -221,10 +223,10 @@ impl XVectorHunk {
 #[derive(NameIdFromObject, Debug, Clone)]
 pub struct ObjSourceHunk {
     name_id: u32,
-    moddate: u32,
+    moddate: DateTime<Local>,
 }
 impl ObjSourceHunk {
-    pub fn moddate(&self) -> u32 {
+    pub fn moddate(&self) -> DateTime<Local> {
         self.moddate
     }
 }
@@ -1028,7 +1030,7 @@ impl TryFrom<&[u8]> for CodeHunks {
 
                     let src_hunk = ObjSourceHunk {
                         name_id: name_id,
-                        moddate: moddate,
+                        moddate: from_mac_datetime(moddate).into(),
                     };
 
                     let hunk = match tag {

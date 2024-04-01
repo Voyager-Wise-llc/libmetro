@@ -1,3 +1,5 @@
+use chrono::{DateTime, Local};
+
 use crate::objects_m68k::MetrowerksObject;
 
 use super::util;
@@ -36,7 +38,7 @@ pub enum LibraryFlags {
 
 #[derive(Debug, Clone)]
 pub struct FileObject {
-    moddate: u32,
+    moddate: DateTime<Local>,
     file_name: String,
     full_path: String,
     obj: MetrowerksObject,
@@ -55,7 +57,7 @@ impl FileObject {
         self.full_path.as_str()
     }
 
-    pub fn moddate(&self) -> u32 {
+    pub fn moddate(&self) -> DateTime<Local> {
         self.moddate
     }
 }
@@ -155,7 +157,7 @@ impl TryFrom<&[u8]> for MetroWerksLibrary {
                 obj_bytes = &obj_bytes[20..];
 
                 files.push(FileObject {
-                    moddate: file_moddate,
+                    moddate: util::from_mac_datetime(file_moddate).into(),
                     file_name: file_name,
                     full_path: full_path,
                     obj: MetrowerksObject::try_from(bytes)?,

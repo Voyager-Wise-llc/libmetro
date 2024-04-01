@@ -13,3 +13,4 @@ version = "0.1.0"  # Same as main version
 
 [dependencies]
 bitflags = "2.5.0"
+chrono = "0.4.37"

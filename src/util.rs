@@ -1,6 +1,6 @@
-use std::collections::VecDeque;
-
 use crate::objects_m68k::MetrowerksObject;
+use chrono::{DateTime, Local, NaiveDate, TimeZone, Utc};
+use std::{collections::VecDeque, sync::Once};
 
 pub trait NameIdFromObject<'a>: Sized {
     fn name(&'a self, obj: &'a MetrowerksObject) -> &str;
@@ -49,4 +49,34 @@ pub fn convert_be_i16(data: &[u8; 2]) -> i16 {
 pub fn convert_be_i32(data: &[u8; 4]) -> i32 {
     let res: i32 = unsafe { std::mem::transmute(*data) };
     i32::from_be(res)
+}
+
+/* Timestamp conversion */
+static mut MAC_EPOCH_OFFSET: i64 = 0;
+static INIT_MAC_EPOCH_OFFSET: Once = Once::new();
+
+fn get_offset() -> i64 {
+    unsafe {
+        INIT_MAC_EPOCH_OFFSET.call_once(|| {
+            MAC_EPOCH_OFFSET = NaiveDate::from_ymd_opt(1904, 1, 1)
+                .unwrap()
+                .and_hms_opt(0, 0, 0)
+                .unwrap()
+                .and_local_timezone(Local)
+                .unwrap()
+                .timestamp()
+                .abs()
+        });
+        MAC_EPOCH_OFFSET
+    }
+}
+
+pub fn from_mac_datetime(date: u32) -> DateTime<Utc> {
+    // Classic MacOS timestamps start from midnight on January 1, 1904.
+    Utc.timestamp_opt((date as i64) - get_offset(), 0).unwrap()
+}
+
+pub fn to_mac_datetime<T: TimeZone>(date: DateTime<T>) -> u32 {
+    // Classic MacOS timestamps start from midnight on January 1, 1904.
+    (date.to_utc().timestamp() + get_offset()) as u32
 }
