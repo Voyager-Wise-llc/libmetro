@@ -45,6 +45,7 @@ impl From<u32> for LibraryProcessor {
 pub enum LibraryFlags {
     None = 0,
 }
+
 impl LibraryFlags {
     fn default() -> LibraryFlags {
         LibraryFlags::None
@@ -117,8 +118,7 @@ enum LibraryParseState {
     Start,
     ParseLibraryHeader,
 
-    FileStart,
-    CommitFile,
+    ParseFile,
 
     End,
 }
@@ -169,13 +169,13 @@ pub fn parse_library(value: &[u8]) -> Result<MetroWerksLibrary, String> {
                 if num_objects != 0 {
                     data = &data[28..];
                     remaining_files = num_objects;
-                    LibraryParseState::FileStart
+                    LibraryParseState::ParseFile
                 } else {
                     LibraryParseState::End
                 }
             }
 
-            LibraryParseState::FileStart => {
+            LibraryParseState::ParseFile => {
                 let file_moddate = util::convert_be_u32(&data[0..4].try_into().unwrap());
                 let file_name_loc = util::convert_be_u32(&data[4..8].try_into().unwrap()) as usize;
                 let full_path_loc = util::convert_be_u32(&data[8..12].try_into().unwrap()) as usize;
@@ -212,17 +212,15 @@ pub fn parse_library(value: &[u8]) -> Result<MetroWerksLibrary, String> {
                     obj: MetrowerksObject::try_from(bytes)?,
                 });
 
-                LibraryParseState::CommitFile
-            }
-            LibraryParseState::CommitFile => {
                 remaining_files -= 1;
 
                 if remaining_files == 0 {
                     LibraryParseState::End
                 } else {
-                    LibraryParseState::FileStart
+                    LibraryParseState::ParseFile
                 }
             }
+
             _ => todo!(),
         }
     }
