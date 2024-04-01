@@ -2,8 +2,7 @@ use std::collections::VecDeque;
 
 use crate::objects_m68k::MetrowerksObject;
 
-pub trait NameIdFromObject: Sized {
-    fn name(&self, obj: MetrowerksObject) -> String;
+
 }
 
 const NAMEHASH: u16 = 1024;
