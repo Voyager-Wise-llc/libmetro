@@ -1,4 +1,4 @@
-use std::{ops::Range, slice::Iter};
+use std::ops::{Deref, Range};
 
 use crate::util::RawLength;
 
@@ -237,6 +237,14 @@ pub struct Struct {
     members: Vec<StructMember>,
 }
 
+impl Deref for Struct {
+    type Target = Vec<StructMember>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.members
+    }
+}
+
 impl From<&[u8]> for Struct {
     fn from(value: &[u8]) -> Self {
         let mut data = value;
@@ -273,14 +281,6 @@ impl Struct {
     pub fn size(&self) -> u32 {
         self.size
     }
-
-    pub fn members(&self) -> &[StructMember] {
-        &self.members
-    }
-
-    pub fn member_iter(&self) -> Iter<StructMember> {
-        self.members.iter()
-    }
 }
 
 impl RawLength for Struct {
@@ -294,6 +294,7 @@ pub struct EnumMember {
     name_id: u32,
     value: u32,
 }
+
 impl EnumMember {
     pub fn value(&self) -> u32 {
         self.value
@@ -312,15 +313,16 @@ pub struct Enum {
     typ: DataType,
     members: Vec<EnumMember>,
 }
-impl Enum {
-    pub fn members(&self) -> &[EnumMember] {
+
+impl Deref for Enum {
+    type Target = Vec<EnumMember>;
+
+    fn deref(&self) -> &Self::Target {
         &self.members
     }
+}
 
-    pub fn member_iter(&self) -> Iter<EnumMember> {
-        self.members.iter()
-    }
-
+impl Enum {
     pub fn data_type(&self) -> &DataType {
         &self.typ
     }
@@ -519,6 +521,14 @@ pub struct PascalEnum {
     members: Vec<u32>,
 }
 
+impl Deref for PascalEnum {
+    type Target = Vec<u32>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.members
+    }
+}
+
 impl From<&[u8]> for PascalEnum {
     fn from(value: &[u8]) -> Self {
         let mut data = value;
@@ -539,16 +549,6 @@ impl From<&[u8]> for PascalEnum {
             name_id: name,
             members: members,
         }
-    }
-}
-
-impl PascalEnum {
-    pub fn members_iter(&self) -> Iter<u32> {
-        self.members.iter()
-    }
-
-    pub fn members(&self) -> &[u32] {
-        &self.members
     }
 }
 
@@ -735,15 +735,25 @@ pub(crate) struct TypeTable {
     table: Vec<TypeDefinition>,
 }
 
-impl RawLength for TypeTable {
-    fn raw_length(&self) -> usize {
-        (2 * self.table.len()) + self.table.iter().map(|x| x.raw_length()).sum::<usize>()
+impl Default for TypeTable {
+    fn default() -> Self {
+        Self {
+            table: Default::default(),
+        }
     }
 }
 
-impl TypeTable {
-    pub fn types(&self) -> &[TypeDefinition] {
+impl Deref for TypeTable {
+    type Target = Vec<TypeDefinition>;
+
+    fn deref(&self) -> &Self::Target {
         &self.table
+    }
+}
+
+impl RawLength for TypeTable {
+    fn raw_length(&self) -> usize {
+        (2 * self.table.len()) + self.table.iter().map(|x| x.raw_length()).sum::<usize>()
     }
 }
 

@@ -2,7 +2,7 @@ use crate::objects_m68k::MetrowerksObject;
 
 use super::util;
 use std::ffi::CStr;
-use std::slice::Iter;
+use std::ops::Deref;
 
 #[repr(u32)]
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -68,30 +68,25 @@ pub struct MetroWerksLibrary {
     files: Vec<FileObject>,
 }
 
+impl Deref for MetroWerksLibrary {
+    type Target = Vec<FileObject>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.files
+    }
+}
+
 impl MetroWerksLibrary {
-    #[inline(always)]
     pub fn proc(&self) -> LibraryProcessor {
         self.proc
     }
 
-    #[inline(always)]
     pub fn flags(&self) -> LibraryFlags {
         self.flags
     }
 
-    #[inline(always)]
     pub fn version(&self) -> u32 {
         self.version
-    }
-
-    #[inline(always)]
-    pub fn file_iter(&self) -> Iter<FileObject> {
-        self.files.iter()
-    }
-
-    #[inline(always)]
-    pub fn file_count(&self) -> usize {
-        self.files.len()
     }
 }
 
@@ -195,11 +190,11 @@ mod tests {
         let mut ve: Vec<u8> = vec![];
         lib.read_to_end(&mut ve).unwrap();
 
-        let l = MetroWerksLibrary::try_from(ve.as_ref()).unwrap();
+        let lut = MetroWerksLibrary::try_from(ve.as_ref()).unwrap();
 
-        println!("{:#?}", l);
+        println!("{:#?}", lut);
 
-        for f in l.file_iter() {
+        for f in lut.iter() {
             let ob = f.object();
 
             assert_eq!(
@@ -234,11 +229,11 @@ mod tests {
         let mut ve: Vec<u8> = vec![];
         lib.read_to_end(&mut ve).unwrap();
 
-        let l = MetroWerksLibrary::try_from(ve.as_ref()).unwrap();
+        let lut = MetroWerksLibrary::try_from(ve.as_ref()).unwrap();
 
-        println!("{:#?}", l);
+        println!("{:#?}", lut);
 
-        for f in l.file_iter() {
+        for f in lut.iter() {
             let ob = f.object();
 
             assert_eq!(
@@ -273,11 +268,11 @@ mod tests {
         let mut ve: Vec<u8> = vec![];
         lib.read_to_end(&mut ve).unwrap();
 
-        let l = MetroWerksLibrary::try_from(ve.as_ref()).unwrap();
+        let lut = MetroWerksLibrary::try_from(ve.as_ref()).unwrap();
 
-        println!("{:#?}", l);
+        println!("{:#?}", lut);
 
-        for f in l.file_iter() {
+        for f in lut.iter() {
             let ob = f.object();
 
             assert_eq!(

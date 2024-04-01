@@ -1,14 +1,10 @@
 use bitflags::bitflags;
 use core::fmt::Display;
-use std::{ffi::CStr, slice::Iter};
+use std::ffi::CStr;
 
 use crate::util::RawLength;
 
-use super::{
-    code_m68k::{CodeHunks, Hunk},
-    symtable_m68k::SymbolTable,
-    util,
-};
+use super::{code_m68k::CodeHunks, symtable_m68k::SymbolTable, util};
 
 #[derive(PartialEq)]
 pub enum ObjectMagicWord {
@@ -273,16 +269,8 @@ impl MetrowerksObject {
         &self.names
     }
 
-    pub fn names_iter(&self) -> Iter<NameEntry> {
-        self.names.iter()
-    }
-
     pub fn symbols(&self) -> Option<&SymbolTable> {
         self.symtab.as_ref()
-    }
-
-    pub fn hunk_iter(&self) -> Iter<Hunk> {
-        self.hunks.iter()
     }
 
     pub fn hunks(&self) -> &CodeHunks {

@@ -1,4 +1,4 @@
-use std::slice::Iter;
+use std::ops::Deref;
 
 use crate::util::RawLength;
 
@@ -33,6 +33,14 @@ pub struct ObjCodeHunk {
     code: Vec<u8>,
 }
 
+impl Deref for ObjCodeHunk {
+    type Target = Vec<u8>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.code
+    }
+}
+
 impl RawLength for ObjCodeHunk {
     fn raw_length(&self) -> usize {
         12 + self.code.len()
@@ -42,10 +50,6 @@ impl RawLength for ObjCodeHunk {
 impl ObjCodeHunk {
     pub fn has_symtab(&self) -> bool {
         self.sym_offset != 0x80000000
-    }
-
-    pub fn code_iter(&self) -> Iter<u8> {
-        self.code.iter()
     }
 
     pub fn sym_decl_offset(&self) -> u32 {
@@ -62,12 +66,10 @@ pub struct ObjInitHunk {
     code: Vec<u8>,
 }
 
-impl ObjInitHunk {
-    pub fn code_iter(&self) -> Iter<u8> {
-        self.code.iter()
-    }
+impl Deref for ObjInitHunk {
+    type Target = Vec<u8>;
 
-    pub fn code(&self) -> &[u8] {
+    fn deref(&self) -> &Self::Target {
         &self.code
     }
 }
@@ -80,11 +82,15 @@ pub struct ObjDataHunk {
     data: Vec<u8>,
 }
 
-impl ObjDataHunk {
-    pub fn data_iter(&self) -> Iter<u8> {
-        self.data.iter()
-    }
+impl Deref for ObjDataHunk {
+    type Target = Vec<u8>;
 
+    fn deref(&self) -> &Self::Target {
+        &self.data
+    }
+}
+
+impl ObjDataHunk {
     pub fn sym_offset(&self) -> u32 {
         self.sym_offset
     }
@@ -128,9 +134,11 @@ pub struct ObjXRefHunk {
     pairs: Vec<ObjXRefPair>,
 }
 
-impl ObjXRefHunk {
-    pub fn pairs_iter(&self) -> Iter<ObjXRefPair> {
-        self.pairs.iter()
+impl Deref for ObjXRefHunk {
+    type Target = Vec<ObjXRefPair>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.pairs
     }
 }
 
@@ -139,13 +147,11 @@ pub struct ObjExceptInfo {
     info: Vec<u8>,
 }
 
-impl ObjExceptInfo {
-    pub fn info(&self) -> &[u8] {
-        &self.info
-    }
+impl Deref for ObjExceptInfo {
+    type Target = Vec<u8>;
 
-    pub fn info_iter(&self) -> Iter<u8> {
-        self.info.iter()
+    fn deref(&self) -> &Self::Target {
+        &self.info
     }
 }
 
@@ -205,6 +211,7 @@ pub struct XVectorHunk {
     name_id: u32,
     function_name: u32,
 }
+
 impl XVectorHunk {
     pub fn function_name(&self) -> u32 {
         self.function_name
@@ -260,17 +267,17 @@ pub struct ObjClassHunk {
     pairs: Vec<ObjClassPair>,
 }
 
+impl Deref for ObjClassHunk {
+    type Target = Vec<ObjClassPair>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.pairs
+    }
+}
+
 impl ObjClassHunk {
     pub fn methods(&self) -> u16 {
         self.methods
-    }
-
-    pub fn pairs(&self) -> &[ObjClassPair] {
-        &self.pairs
-    }
-
-    pub fn pairs_iter(&self) -> Iter<ObjClassPair> {
-        self.pairs.iter()
     }
 }
 
@@ -593,13 +600,11 @@ pub struct CodeHunks {
     hunks: Vec<Hunk>,
 }
 
-impl CodeHunks {
-    pub fn iter(&self) -> Iter<Hunk> {
-        self.hunks.iter()
-    }
+impl Deref for CodeHunks {
+    type Target = Vec<Hunk>;
 
-    pub fn len(&self) -> usize {
-        self.hunks.len()
+    fn deref(&self) -> &Self::Target {
+        &self.hunks
     }
 }
 

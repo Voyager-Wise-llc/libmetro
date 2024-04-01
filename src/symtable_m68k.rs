@@ -1,5 +1,4 @@
 use std::fmt::Debug;
-use std::slice::Iter;
 
 use crate::types_m68k::TypeTable;
 use crate::util::{convert_be_i32, RawLength};
@@ -249,7 +248,7 @@ pub struct SymbolTable {
     unnamed: u32, // CVW: This may be resolvable where 'name_id == 0' in type table entries.
     reserved: [u32; 4],
     routines: Vec<Routine>,
-    types: Vec<TypeDefinition>,
+    types: TypeTable,
 }
 
 impl RawLength for SymbolTable {
@@ -263,17 +262,8 @@ impl SymbolTable {
     pub fn routines(&self) -> &[Routine] {
         &self.routines
     }
-
-    pub fn routine_iter(&self) -> Iter<Routine> {
-        self.routines.iter()
-    }
-
     pub fn types(&self) -> &[TypeDefinition] {
         &self.types
-    }
-
-    pub fn type_iter(&self) -> Iter<TypeDefinition> {
-        self.types.iter()
     }
 
     pub fn routine_at_offset(&self, offset: usize) -> &Routine {
@@ -339,12 +329,9 @@ impl TryFrom<&[u8]> for SymbolTable {
         // Process Type Table
         let type_table = if type_offset != 0 {
             let tbl = &value[type_offset..];
-            TypeTable::try_from((tbl, num_types))
-                .unwrap()
-                .types()
-                .to_owned()
+            TypeTable::try_from((tbl, num_types)).unwrap()
         } else {
-            vec![]
+            TypeTable::default()
         };
 
         Ok(SymbolTable {
