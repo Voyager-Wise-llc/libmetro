@@ -21,14 +21,9 @@ pub fn name_macro_derive(input: TokenStream) -> TokenStream {
 fn impl_name_macro(ast: &syn::DeriveInput) -> TokenStream {
     let name = &ast.ident;
     let gen = quote! {
-        impl NameIdFromObject for #name {
-
-            fn name(&self, obj: crate::objects_m68k::MetrowerksObject) -> String {
-                obj.names()[(self.name_id + 1) as usize]
-                    .name()
-                    .clone()
-                    .into_string()
-                    .unwrap()
+        impl<'a> NameIdFromObject<'a> for #name {
+            fn name(&'a self, obj: &'a crate::objects_m68k::MetrowerksObject) -> &str {
+                obj.names()[(self.name_id + 1) as usize].name().as_str()
             }
         }
     };

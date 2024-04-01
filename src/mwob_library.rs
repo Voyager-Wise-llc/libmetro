@@ -1,17 +1,13 @@
+use crate::objects_m68k::MetrowerksObject;
+
 use super::util;
 use std::ffi::CStr;
-use std::slice::Iter;
+use std::ops::Deref;
 
 #[repr(u32)]
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum LibraryMagicWord {
     LibraryMagicWord = 0x4d574f42,
-}
-
-impl Default for LibraryMagicWord {
-    fn default() -> Self {
-        LibraryMagicWord::LibraryMagicWord
-    }
 }
 
 #[repr(u32)]
@@ -20,12 +16,6 @@ pub enum LibraryProcessor {
     Unknown = 0,
     PowerPC = 0x50504320,
     M68k = 0x4d36384b,
-}
-
-impl Default for LibraryProcessor {
-    fn default() -> Self {
-        LibraryProcessor::Unknown
-    }
 }
 
 impl From<u32> for LibraryProcessor {
@@ -43,47 +33,18 @@ impl From<u32> for LibraryProcessor {
 pub enum LibraryFlags {
     None = 0,
 }
-impl LibraryFlags {
-    fn default() -> LibraryFlags {
-        LibraryFlags::None
-    }
-}
 
 #[derive(Debug, Clone)]
 pub struct FileObject {
     moddate: u32,
     file_name: String,
     full_path: String,
-    data: Vec<u8>,
-}
-
-impl Default for FileObject {
-    fn default() -> Self {
-        Self {
-            moddate: 0,
-            file_name: String::new(),
-            full_path: String::new(),
-            data: vec![],
-        }
-    }
+    obj: MetrowerksObject,
 }
 
 impl FileObject {
-    fn new(moddate: u32, file_name: String, full_path: String, data: &[u8]) -> Self {
-        Self {
-            moddate: moddate,
-            file_name: file_name,
-            full_path: full_path,
-            data: data.to_vec(),
-        }
-    }
-
-    pub fn as_bytes(&self) -> &[u8] {
-        self.data.as_slice()
-    }
-
-    pub fn length(&self) -> usize {
-        self.data.len()
+    pub fn object(&self) -> &MetrowerksObject {
+        &self.obj
     }
 
     pub fn filename(&self) -> &str {
@@ -107,119 +68,70 @@ pub struct MetroWerksLibrary {
     files: Vec<FileObject>,
 }
 
-impl MetroWerksLibrary {
-    fn new(
-        proc: LibraryProcessor,
-        flags: LibraryFlags,
-        version: u32,
-        files: Vec<FileObject>,
-    ) -> Self {
-        Self {
-            proc: proc,
-            flags: flags,
-            version: version,
-            files: files,
-        }
-    }
+impl Deref for MetroWerksLibrary {
+    type Target = Vec<FileObject>;
 
-    #[inline(always)]
+    fn deref(&self) -> &Self::Target {
+        &self.files
+    }
+}
+
+impl MetroWerksLibrary {
     pub fn proc(&self) -> LibraryProcessor {
         self.proc
     }
 
-    #[inline(always)]
     pub fn flags(&self) -> LibraryFlags {
         self.flags
     }
 
-    #[inline(always)]
     pub fn version(&self) -> u32 {
         self.version
     }
-
-    #[inline(always)]
-    pub fn file_iter(&self) -> Iter<FileObject> {
-        self.files.iter()
-    }
-
-    #[inline(always)]
-    pub fn file_count(&self) -> usize {
-        self.files.len()
-    }
 }
 
-#[derive(PartialEq)]
-enum LibraryParseState {
-    Start,
-    ParseLibraryHeader,
+impl TryFrom<&[u8]> for MetroWerksLibrary {
+    type Error = String;
 
-    FileStart,
-    CommitFile,
+    fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
+        let magic = util::convert_be_u32(&value[0..4].try_into().unwrap());
 
-    End,
-}
+        if magic != LibraryMagicWord::LibraryMagicWord as u32 {
+            return Err(format!(
+                "Bad Magic Word: Expected: {}, got: {}",
+                LibraryMagicWord::LibraryMagicWord as u32,
+                magic
+            ));
+        }
 
-impl Default for LibraryParseState {
-    fn default() -> Self {
-        LibraryParseState::Start
-    }
-}
+        let proc_u32 = util::convert_be_u32(&value[4..8].try_into().unwrap());
+        let proc = LibraryProcessor::from(proc_u32);
 
-pub fn parse_library(value: &[u8]) -> Result<MetroWerksLibrary, String> {
-    let mut data: &[u8] = value;
-    let mut files: Vec<FileObject> = Vec::new();
-    let mut current_file = FileObject::default();
-    let mut remaining_files = 0;
+        let flags_u32 = util::convert_be_u32(&value[8..12].try_into().unwrap());
+        if flags_u32 != 0 {
+            return Err(format!("Bad flags for header, got: {}", flags_u32));
+        }
+        let flags = LibraryFlags::None;
 
-    let mut proc = LibraryProcessor::default();
-    let mut flags = LibraryFlags::default();
-    let mut version: u32 = 0;
+        let version = util::convert_be_u32(&value[12..16].try_into().unwrap());
 
-    let mut state: LibraryParseState = LibraryParseState::default();
-    while state != LibraryParseState::End {
-        state = match state {
-            LibraryParseState::Start => LibraryParseState::ParseLibraryHeader,
-            LibraryParseState::ParseLibraryHeader => {
-                let magic = util::convert_be_u32(&data[0..4].try_into().unwrap());
+        let num_files = util::convert_be_u32(&value[24..28].try_into().unwrap());
 
-                if magic != LibraryMagicWord::LibraryMagicWord as u32 {
-                    return Err(format!(
-                        "Bad Magic Word: Expected: {}, got: {}",
-                        LibraryMagicWord::LibraryMagicWord as u32,
-                        magic
-                    ));
-                }
+        let files = if num_files != 0 {
+            let mut obj_bytes = &value[28..];
+            let mut remaining_files = num_files;
+            let mut files = vec![];
 
-                let proc_u32 = util::convert_be_u32(&data[4..8].try_into().unwrap());
-                proc = LibraryProcessor::from(proc_u32);
-
-                let flags_u32 = util::convert_be_u32(&data[8..12].try_into().unwrap());
-                if flags_u32 != 0 {
-                    return Err(format!("Bad flags for header, got: {}", flags_u32));
-                }
-                flags = LibraryFlags::None;
-
-                version = util::convert_be_u32(&data[12..16].try_into().unwrap());
-
-                let num_objects = util::convert_be_u32(&data[24..28].try_into().unwrap());
-
-                if num_objects != 0 {
-                    data = &data[28..];
-                    remaining_files = num_objects;
-                    LibraryParseState::FileStart
-                } else {
-                    LibraryParseState::End
-                }
-            }
-
-            LibraryParseState::FileStart => {
-                let file_moddate = util::convert_be_u32(&data[0..4].try_into().unwrap());
-                let file_name_loc = util::convert_be_u32(&data[4..8].try_into().unwrap()) as usize;
-                let full_path_loc = util::convert_be_u32(&data[8..12].try_into().unwrap()) as usize;
+            while remaining_files > 0 {
+                let file_moddate = util::convert_be_u32(&obj_bytes[0..4].try_into().unwrap());
+                let file_name_loc =
+                    util::convert_be_u32(&obj_bytes[4..8].try_into().unwrap()) as usize;
+                let full_path_loc =
+                    util::convert_be_u32(&obj_bytes[8..12].try_into().unwrap()) as usize;
                 let data_start: usize =
-                    util::convert_be_u32(&data[12..16].try_into().unwrap()) as usize;
+                    util::convert_be_u32(&obj_bytes[12..16].try_into().unwrap()) as usize;
                 let data_size: usize =
-                    util::convert_be_u32(&data[16..20].try_into().unwrap()) as usize;
+                    util::convert_be_u32(&obj_bytes[16..20].try_into().unwrap()) as usize;
 
                 // The file_name, full_path, and bytes are relative to the LIBRARY Header not the FILE Header
                 let file_name = CStr::from_bytes_until_nul(&value[file_name_loc..])
@@ -240,60 +152,50 @@ pub fn parse_library(value: &[u8]) -> Result<MetroWerksLibrary, String> {
 
                 // The bytes are relative to the LIBRARY Header not the FILE Header
                 let bytes = &value[data_start..(data_start + data_size)];
-                data = &data[20..];
+                obj_bytes = &obj_bytes[20..];
 
-                current_file = FileObject::new(file_moddate, file_name, full_path, bytes);
+                files.push(FileObject {
+                    moddate: file_moddate,
+                    file_name: file_name,
+                    full_path: full_path,
+                    obj: MetrowerksObject::try_from(bytes)?,
+                });
 
-                LibraryParseState::CommitFile
-            }
-            LibraryParseState::CommitFile => {
-                files.push(current_file.clone());
                 remaining_files -= 1;
-
-                if remaining_files == 0 {
-                    LibraryParseState::End
-                } else {
-                    LibraryParseState::FileStart
-                }
             }
-            _ => todo!(),
-        }
-    }
 
-    Ok(MetroWerksLibrary::new(proc, flags, version, files))
-}
+            files
+        } else {
+            vec![]
+        };
 
-impl TryFrom<&[u8]> for MetroWerksLibrary {
-    type Error = String;
-
-    fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
-        parse_library(value)
+        Ok(MetroWerksLibrary {
+            proc: proc,
+            flags: flags,
+            version: version,
+            files: files,
+        })
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::objects_m68k::MetrowerksObject;
-
     use super::*;
     use std::fs::File;
     use std::io::Read;
 
     #[test]
-    fn test_simple_library() {
+    fn test_simple_add_library() {
         let mut lib = File::open("test/data/add.lib.metro").unwrap();
         let mut ve: Vec<u8> = vec![];
         lib.read_to_end(&mut ve).unwrap();
 
-        let l = MetroWerksLibrary::try_from(ve.as_ref()).unwrap();
+        let lut = MetroWerksLibrary::try_from(ve.as_ref()).unwrap();
 
-        println!("{:#?}", l);
-        println!("{} objects.", l.file_count());
+        println!("{:#?}", lut);
 
-        for raw_file in l.file_iter() {
-            let ob = MetrowerksObject::try_from(raw_file.as_bytes()).unwrap();
-
-            println!("{:#?}", ob);
+        for f in lut.iter() {
+            let ob = f.object();
 
             assert_eq!(
                 3,
@@ -305,10 +207,10 @@ mod tests {
 
             assert_eq!(
                 1,
-                ob.symbols().routines().len(),
+                ob.symbols().unwrap().routines().len(),
                 "Wrong number of routines, expected: {}, got: {}",
                 1,
-                ob.symbols().routines().len()
+                ob.symbols().unwrap().routines().len()
             );
 
             assert_eq!(
@@ -316,6 +218,84 @@ mod tests {
                 ob.hunks().len(),
                 "Wrong number of hunks, expected: {}, got: {}",
                 3,
+                ob.hunks().len()
+            );
+        }
+    }
+
+    #[test]
+    fn test_simple_multi_func_library() {
+        let mut lib = File::open("test/data/two_funcs.lib.metro").unwrap();
+        let mut ve: Vec<u8> = vec![];
+        lib.read_to_end(&mut ve).unwrap();
+
+        let lut = MetroWerksLibrary::try_from(ve.as_ref()).unwrap();
+
+        println!("{:#?}", lut);
+
+        for f in lut.iter() {
+            let ob = f.object();
+
+            assert_eq!(
+                4,
+                ob.names().len(),
+                "Wrong number of names, expected: {}, got: {}",
+                4,
+                ob.names().len()
+            );
+
+            assert_eq!(
+                2,
+                ob.symbols().unwrap().routines().len(),
+                "Wrong number of routines, expected: {}, got: {}",
+                2,
+                ob.symbols().unwrap().routines().len()
+            );
+
+            assert_eq!(
+                4,
+                ob.hunks().len(),
+                "Wrong number of hunks, expected: {}, got: {}",
+                4,
+                ob.hunks().len()
+            );
+        }
+    }
+
+    #[test]
+    fn test_cw_set_volume_example_library() {
+        let mut lib = File::open("test/data/set_volume_ex.lib.metro").unwrap();
+        let mut ve: Vec<u8> = vec![];
+        lib.read_to_end(&mut ve).unwrap();
+
+        let lut = MetroWerksLibrary::try_from(ve.as_ref()).unwrap();
+
+        println!("{:#?}", lut);
+
+        for f in lut.iter() {
+            let ob = f.object();
+
+            assert_eq!(
+                2,
+                ob.names().len(),
+                "Wrong number of names, expected: {}, got: {}",
+                2,
+                ob.names().len()
+            );
+
+            assert_eq!(
+                1,
+                ob.symbols().unwrap().routines().len(),
+                "Wrong number of routines, expected: {}, got: {}",
+                1,
+                ob.symbols().unwrap().routines().len()
+            );
+
+            assert_eq!(
+                5,
+                ob.hunks().len(),
+                "Wrong number of hunks, expected: {}, got: {}",
+                5,
                 ob.hunks().len()
             );
         }

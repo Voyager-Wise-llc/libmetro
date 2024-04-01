@@ -1,25 +1,14 @@
-use std::{
-    ffi::{CStr, CString},
-    slice::Iter,
-};
-
 use bitflags::bitflags;
+use core::fmt::Display;
+use std::ffi::CStr;
 
-use super::{
-    code_m68k::{CodeHunks, Hunk},
-    symtable_m68k::SymbolTable,
-    util,
-};
+use crate::util::RawLength;
+
+use super::{code_m68k::CodeHunks, symtable_m68k::SymbolTable, util};
 
 #[derive(PartialEq)]
 pub enum ObjectMagicWord {
     ObjectMagicWord = 0xfeedbead,
-}
-
-impl Default for ObjectMagicWord {
-    fn default() -> Self {
-        ObjectMagicWord::ObjectMagicWord
-    }
 }
 
 bitflags! {
@@ -35,24 +24,17 @@ bitflags! {
 #[derive(Debug, Clone)]
 pub struct NameEntry {
     id: u32,
-    name: CString,
+    name: String,
 }
 
-impl Default for NameEntry {
-    fn default() -> Self {
-        Self {
-            id: 0,
-            name: CString::default(),
-        }
+impl Display for NameEntry {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.name)
     }
 }
 
 impl NameEntry {
-    fn new(id: u32, name: CString) -> Self {
-        Self { id: id, name: name }
-    }
-
-    pub fn name(&self) -> &CString {
+    pub fn name(&self) -> &String {
         &self.name
     }
 
@@ -87,506 +69,190 @@ pub struct ObjectHeader {
     reserved4: u8,        /* Reserved by Metrowerks. This field must contain the value 0L. */
 }
 
-impl Default for ObjectHeader {
-    fn default() -> Self {
-        Self {
-            version: 0,
-            flags: ObjectFlags::empty(),
-            obj_size: 0,
-            nametable_offset: 0,
-            nametable_names: 0,
-            symtable_offset: 0,
-            symtable_size: 0,
-            reserved1: 0,
-            code_size: 0,
-            udata_size: 0,
-            idata_size: 0,
-            old_def_version: 0,
-            old_imp_version: 0,
-            current_version: 0,
-            has_flags: 0,
-            is_pascal: 0,
-            is_fourbyteint: 0,
-            is_eightdouble: 0,
-            is_mc68881: 0,
-            basereg: 0,
-            reserved3: 0,
-            reserved4: 0,
+impl TryFrom<&[u8]> for ObjectHeader {
+    type Error = String;
+
+    fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
+        let magic = util::convert_be_u32(&value[0..4].try_into().unwrap());
+
+        if magic != ObjectMagicWord::ObjectMagicWord as u32 {
+            return Err(format!(
+                "Bad magic word, Expected: {}, got: {}",
+                ObjectMagicWord::ObjectMagicWord as u32,
+                magic
+            ));
         }
+
+        let version = util::convert_be_u16(&value[4..6].try_into().unwrap());
+        let flags = ObjectFlags::from_bits(util::convert_be_u16(&value[6..8].try_into().unwrap()));
+        let obj_size = util::convert_be_u32(&value[8..12].try_into().unwrap());
+        let nametable_offset = util::convert_be_u32(&value[12..16].try_into().unwrap());
+        let nametable_count = util::convert_be_u32(&value[16..20].try_into().unwrap());
+        let symtab_offset = util::convert_be_u32(&value[20..24].try_into().unwrap());
+        let symtable_size = util::convert_be_u32(&value[24..28].try_into().unwrap());
+        let reserved1 = util::convert_be_u32(&value[28..32].try_into().unwrap());
+
+        if reserved1 != 0 {
+            return Err(format!("Reserved1 is not 0L, got: {}", reserved1));
+        }
+
+        let code_size = util::convert_be_u32(&value[32..36].try_into().unwrap());
+        let udata_size = util::convert_be_u32(&value[36..40].try_into().unwrap());
+        let idata_size = util::convert_be_u32(&value[40..44].try_into().unwrap());
+
+        let old_def_version = util::convert_be_u32(&value[44..48].try_into().unwrap());
+        let old_imp_version = util::convert_be_u32(&value[48..52].try_into().unwrap());
+        let current_version = util::convert_be_u32(&value[52..56].try_into().unwrap());
+
+        let has_flags = value[56];
+        let is_pascal = value[57];
+        let is_fourbyteint = value[58];
+        let is_eightdouble = value[59];
+        let is_mc68881 = value[60];
+        let basereg = value[61];
+
+        let reserved3 = value[62];
+        if reserved3 != 0 {
+            return Err(format!("Reserved is not 0L, got: {}", reserved3));
+        }
+
+        let reserved4 = value[63];
+        if reserved4 != 0 {
+            return Err(format!("Reserved4 is not 0L, got: {}", reserved4));
+        }
+
+        Ok(ObjectHeader {
+            version: version,
+            flags: flags.unwrap(),
+            obj_size: obj_size,
+            nametable_offset: nametable_offset,
+            nametable_names: nametable_count - 1,
+            symtable_offset: symtab_offset,
+            symtable_size: symtable_size,
+            reserved1: reserved1,
+            code_size: code_size,
+            udata_size: udata_size,
+            idata_size: idata_size,
+            old_def_version: old_def_version,
+            old_imp_version: old_imp_version,
+            current_version: current_version,
+            has_flags: has_flags,
+            is_pascal: is_pascal,
+            is_fourbyteint: is_fourbyteint,
+            is_eightdouble: is_eightdouble,
+            is_mc68881: is_mc68881,
+            basereg: basereg,
+            reserved3: reserved3,
+            reserved4: reserved4,
+        })
+    }
+}
+
+impl RawLength for ObjectHeader {
+    fn raw_length(&self) -> usize {
+        64
     }
 }
 
 impl ObjectHeader {
-    pub fn version(self, version: u16) -> Self {
-        Self {
-            version: version,
-            flags: self.flags,
-            obj_size: self.obj_size,
-            nametable_offset: self.nametable_offset,
-            nametable_names: self.nametable_names,
-            symtable_offset: self.symtable_offset,
-            symtable_size: self.symtable_size,
-            reserved1: self.reserved1,
-            code_size: self.code_size,
-            udata_size: self.udata_size,
-            idata_size: self.idata_size,
-            old_def_version: self.old_def_version,
-            old_imp_version: self.old_imp_version,
-            current_version: self.current_version,
-            has_flags: self.has_flags,
-            is_pascal: self.is_pascal,
-            is_fourbyteint: self.is_fourbyteint,
-            is_eightdouble: self.is_eightdouble,
-            is_mc68881: self.is_mc68881,
-            basereg: self.basereg,
-            reserved3: self.reserved3,
-            reserved4: self.reserved4,
-        }
-    }
-
-    pub fn flags(self, flags: ObjectFlags) -> Self {
-        Self {
-            version: self.version,
-            flags: flags,
-            obj_size: self.obj_size,
-            nametable_offset: self.nametable_offset,
-            nametable_names: self.nametable_names,
-            symtable_offset: self.symtable_offset,
-            symtable_size: self.symtable_size,
-            reserved1: self.reserved1,
-            code_size: self.code_size,
-            udata_size: self.udata_size,
-            idata_size: self.idata_size,
-            old_def_version: self.old_def_version,
-            old_imp_version: self.old_imp_version,
-            current_version: self.current_version,
-            has_flags: self.has_flags,
-            is_pascal: self.is_pascal,
-            is_fourbyteint: self.is_fourbyteint,
-            is_eightdouble: self.is_eightdouble,
-            is_mc68881: self.is_mc68881,
-            basereg: self.basereg,
-            reserved3: self.reserved3,
-            reserved4: self.reserved4,
-        }
-    }
-
-    pub fn obj_size(self, obj_size: u32) -> Self {
-        Self {
-            version: self.version,
-            flags: self.flags,
-            obj_size: obj_size,
-            nametable_offset: self.nametable_offset,
-            nametable_names: self.nametable_names,
-            symtable_offset: self.symtable_offset,
-            symtable_size: self.symtable_size,
-            reserved1: self.reserved1,
-            code_size: self.code_size,
-            udata_size: self.udata_size,
-            idata_size: self.idata_size,
-            old_def_version: self.old_def_version,
-            old_imp_version: self.old_imp_version,
-            current_version: self.current_version,
-            has_flags: self.has_flags,
-            is_pascal: self.is_pascal,
-            is_fourbyteint: self.is_fourbyteint,
-            is_eightdouble: self.is_eightdouble,
-            is_mc68881: self.is_mc68881,
-            basereg: self.basereg,
-            reserved3: self.reserved3,
-            reserved4: self.reserved4,
-        }
-    }
-
-    #[inline(always)]
     pub fn obj_start(&self) -> usize {
-        64 as usize
+        64
     }
 
-    #[inline(always)]
     pub fn obj_length(&self) -> usize {
         self.obj_size as usize
     }
 
-    #[inline(always)]
     pub fn obj_end(&self) -> usize {
         self.obj_start() + self.obj_length()
     }
 
-    pub fn nametable_offset(self, nametable_offset: u32) -> Self {
-        Self {
-            version: self.version,
-            flags: self.flags,
-            obj_size: self.obj_size,
-            nametable_offset: nametable_offset,
-            nametable_names: self.nametable_names,
-            symtable_offset: self.symtable_offset,
-            symtable_size: self.symtable_size,
-            reserved1: self.reserved1,
-            code_size: self.code_size,
-            udata_size: self.udata_size,
-            idata_size: self.idata_size,
-            old_def_version: self.old_def_version,
-            old_imp_version: self.old_imp_version,
-            current_version: self.current_version,
-            has_flags: self.has_flags,
-            is_pascal: self.is_pascal,
-            is_fourbyteint: self.is_fourbyteint,
-            is_eightdouble: self.is_eightdouble,
-            is_mc68881: self.is_mc68881,
-            basereg: self.basereg,
-            reserved3: self.reserved3,
-            reserved4: self.reserved4,
-        }
-    }
-
-    #[inline(always)]
-    pub fn nametable_start(&self) -> usize {
-        self.nametable_offset as usize
-    }
-
-    #[inline(always)]
-    pub fn nametable_count(&self) -> usize {
-        self.nametable_names as usize
-    }
-
-    pub fn num_names(self, nametable_num: u32) -> Self {
-        Self {
-            version: self.version,
-            flags: self.flags,
-            obj_size: self.obj_size,
-            nametable_offset: self.nametable_offset,
-            nametable_names: nametable_num,
-            symtable_offset: self.symtable_offset,
-            symtable_size: self.symtable_size,
-            reserved1: self.reserved1,
-            code_size: self.code_size,
-            udata_size: self.udata_size,
-            idata_size: self.idata_size,
-            old_def_version: self.old_def_version,
-            old_imp_version: self.old_imp_version,
-            current_version: self.current_version,
-            has_flags: self.has_flags,
-            is_pascal: self.is_pascal,
-            is_fourbyteint: self.is_fourbyteint,
-            is_eightdouble: self.is_eightdouble,
-            is_mc68881: self.is_mc68881,
-            basereg: self.basereg,
-            reserved3: self.reserved3,
-            reserved4: self.reserved4,
-        }
-    }
-
-    pub fn symtable_offset(self, symtable_offset: u32) -> Self {
-        Self {
-            version: self.version,
-            flags: self.flags,
-            obj_size: self.obj_size,
-            nametable_offset: self.nametable_offset,
-            nametable_names: self.nametable_names,
-            symtable_offset: symtable_offset,
-            symtable_size: self.symtable_size,
-            reserved1: self.reserved1,
-            code_size: self.code_size,
-            udata_size: self.udata_size,
-            idata_size: self.idata_size,
-            old_def_version: self.old_def_version,
-            old_imp_version: self.old_imp_version,
-            current_version: self.current_version,
-            has_flags: self.has_flags,
-            is_pascal: self.is_pascal,
-            is_fourbyteint: self.is_fourbyteint,
-            is_eightdouble: self.is_eightdouble,
-            is_mc68881: self.is_mc68881,
-            basereg: self.basereg,
-            reserved3: self.reserved3,
-            reserved4: self.reserved4,
-        }
-    }
-
-    pub fn symtable_size(self, symtable_size: u32) -> Self {
-        Self {
-            version: self.version,
-            flags: self.flags,
-            obj_size: self.obj_size,
-            nametable_offset: self.nametable_offset,
-            nametable_names: self.nametable_names,
-            symtable_offset: self.symtable_offset,
-            symtable_size: symtable_size,
-            reserved1: self.reserved1,
-            code_size: self.code_size,
-            udata_size: self.udata_size,
-            idata_size: self.idata_size,
-            old_def_version: self.old_def_version,
-            old_imp_version: self.old_imp_version,
-            current_version: self.current_version,
-            has_flags: self.has_flags,
-            is_pascal: self.is_pascal,
-            is_fourbyteint: self.is_fourbyteint,
-            is_eightdouble: self.is_eightdouble,
-            is_mc68881: self.is_mc68881,
-            basereg: self.basereg,
-            reserved3: self.reserved3,
-            reserved4: self.reserved4,
-        }
-    }
-
-    #[inline(always)]
     pub fn symtable_start(&self) -> usize {
         self.symtable_offset as usize
     }
 
-    #[inline(always)]
     pub fn symtable_length(&self) -> usize {
         self.symtable_size as usize
     }
 
-    #[inline(always)]
     pub fn symtable_end(&self) -> usize {
         self.symtable_start() + self.symtable_length()
     }
 
-    pub fn code_size(self, code_size: u32) -> Self {
-        Self {
-            version: self.version,
-            flags: self.flags,
-            obj_size: self.obj_size,
-            nametable_offset: self.nametable_offset,
-            nametable_names: self.nametable_names,
-            symtable_offset: self.symtable_offset,
-            symtable_size: self.symtable_size,
-            reserved1: self.reserved1,
-            code_size: code_size,
-            udata_size: self.udata_size,
-            idata_size: self.idata_size,
-            old_def_version: self.old_def_version,
-            old_imp_version: self.old_imp_version,
-            current_version: self.current_version,
-            has_flags: self.has_flags,
-            is_pascal: self.is_pascal,
-            is_fourbyteint: self.is_fourbyteint,
-            is_eightdouble: self.is_eightdouble,
-            is_mc68881: self.is_mc68881,
-            basereg: self.basereg,
-            reserved3: self.reserved3,
-            reserved4: self.reserved4,
-        }
+    pub fn nametable_start(&self) -> usize {
+        self.nametable_offset as usize
     }
 
-    pub fn udata_size(self, udata_size: u32) -> Self {
-        Self {
-            version: self.version,
-            flags: self.flags,
-            obj_size: self.obj_size,
-            nametable_offset: self.nametable_offset,
-            nametable_names: self.nametable_names,
-            symtable_offset: self.symtable_offset,
-            symtable_size: self.symtable_size,
-            reserved1: self.reserved1,
-            code_size: self.code_size,
-            udata_size: udata_size,
-            idata_size: self.idata_size,
-            old_def_version: self.old_def_version,
-            old_imp_version: self.old_imp_version,
-            current_version: self.current_version,
-            has_flags: self.has_flags,
-            is_pascal: self.is_pascal,
-            is_fourbyteint: self.is_fourbyteint,
-            is_eightdouble: self.is_eightdouble,
-            is_mc68881: self.is_mc68881,
-            basereg: self.basereg,
-            reserved3: self.reserved3,
-            reserved4: self.reserved4,
-        }
+    pub fn nametable_count(&self) -> usize {
+        self.nametable_names as usize
     }
 
-    pub fn idata_size(self, idata_size: u32) -> Self {
-        Self {
-            version: self.version,
-            flags: self.flags,
-            obj_size: self.obj_size,
-            nametable_offset: self.nametable_offset,
-            nametable_names: self.nametable_names,
-            symtable_offset: self.symtable_offset,
-            symtable_size: self.symtable_size,
-            reserved1: self.reserved1,
-            code_size: self.code_size,
-            udata_size: self.udata_size,
-            idata_size: idata_size,
-            old_def_version: self.old_def_version,
-            old_imp_version: self.old_imp_version,
-            current_version: self.current_version,
-            has_flags: self.has_flags,
-            is_pascal: self.is_pascal,
-            is_fourbyteint: self.is_fourbyteint,
-            is_eightdouble: self.is_eightdouble,
-            is_mc68881: self.is_mc68881,
-            basereg: self.basereg,
-            reserved3: self.reserved3,
-            reserved4: self.reserved4,
-        }
+    pub fn reserved1(&self) -> u32 {
+        self.reserved1
     }
 
-    pub fn basereg(self, basereg: u8) -> Self {
-        Self {
-            version: self.version,
-            flags: self.flags,
-            obj_size: self.obj_size,
-            nametable_offset: self.nametable_offset,
-            nametable_names: self.nametable_names,
-            symtable_offset: self.symtable_offset,
-            symtable_size: self.symtable_size,
-            reserved1: self.reserved1,
-            code_size: self.code_size,
-            udata_size: self.udata_size,
-            idata_size: self.idata_size,
-            old_def_version: self.old_def_version,
-            old_imp_version: self.old_imp_version,
-            current_version: self.current_version,
-            has_flags: self.has_flags,
-            is_pascal: self.is_pascal,
-            is_fourbyteint: self.is_fourbyteint,
-            is_eightdouble: self.is_eightdouble,
-            is_mc68881: self.is_mc68881,
-            basereg: basereg,
-            reserved3: self.reserved3,
-            reserved4: self.reserved4,
-        }
+    pub fn code_size(&self) -> u32 {
+        self.code_size
     }
 
-    pub fn has_flags(self, has_flags: u8) -> Self {
-        Self {
-            version: self.version,
-            flags: self.flags,
-            obj_size: self.obj_size,
-            nametable_offset: self.nametable_offset,
-            nametable_names: self.nametable_names,
-            symtable_offset: self.symtable_offset,
-            symtable_size: self.symtable_size,
-            reserved1: self.reserved1,
-            code_size: self.code_size,
-            udata_size: self.udata_size,
-            idata_size: self.idata_size,
-            old_def_version: self.old_def_version,
-            old_imp_version: self.old_imp_version,
-            current_version: self.current_version,
-            has_flags: has_flags,
-            is_pascal: self.is_pascal,
-            is_fourbyteint: self.is_fourbyteint,
-            is_eightdouble: self.is_eightdouble,
-            is_mc68881: self.is_mc68881,
-            basereg: self.basereg,
-            reserved3: self.reserved3,
-            reserved4: self.reserved4,
-        }
+    pub fn udata_size(&self) -> u32 {
+        self.udata_size
     }
 
-    pub fn is_fourbyteint(self, is_fourbyteint: u8) -> Self {
-        Self {
-            version: self.version,
-            flags: self.flags,
-            obj_size: self.obj_size,
-            nametable_offset: self.nametable_offset,
-            nametable_names: self.nametable_names,
-            symtable_offset: self.symtable_offset,
-            symtable_size: self.symtable_size,
-            reserved1: self.reserved1,
-            code_size: self.code_size,
-            udata_size: self.udata_size,
-            idata_size: self.idata_size,
-            old_def_version: self.old_def_version,
-            old_imp_version: self.old_imp_version,
-            current_version: self.current_version,
-            has_flags: self.has_flags,
-            is_pascal: self.is_pascal,
-            is_fourbyteint: is_fourbyteint,
-            is_eightdouble: self.is_eightdouble,
-            is_mc68881: self.is_mc68881,
-            basereg: self.basereg,
-            reserved3: self.reserved3,
-            reserved4: self.reserved4,
-        }
+    pub fn idata_size(&self) -> u32 {
+        self.idata_size
     }
 
-    pub fn is_eightdouble(self, is_eightdouble: u8) -> Self {
-        Self {
-            version: self.version,
-            flags: self.flags,
-            obj_size: self.obj_size,
-            nametable_offset: self.nametable_offset,
-            nametable_names: self.nametable_names,
-            symtable_offset: self.symtable_offset,
-            symtable_size: self.symtable_size,
-            reserved1: self.reserved1,
-            code_size: self.code_size,
-            udata_size: self.udata_size,
-            idata_size: self.idata_size,
-            old_def_version: self.old_def_version,
-            old_imp_version: self.old_imp_version,
-            current_version: self.current_version,
-            has_flags: self.has_flags,
-            is_pascal: self.is_pascal,
-            is_fourbyteint: self.is_fourbyteint,
-            is_eightdouble: is_eightdouble,
-            is_mc68881: self.is_mc68881,
-            basereg: self.basereg,
-            reserved3: self.reserved3,
-            reserved4: self.reserved4,
-        }
+    pub fn old_def_version(&self) -> u32 {
+        self.old_def_version
     }
 
-    pub fn is_mc68881(self, is_mc68881: u8) -> Self {
-        Self {
-            version: self.version,
-            flags: self.flags,
-            obj_size: self.obj_size,
-            nametable_offset: self.nametable_offset,
-            nametable_names: self.nametable_names,
-            symtable_offset: self.symtable_offset,
-            symtable_size: self.symtable_size,
-            reserved1: self.reserved1,
-            code_size: self.code_size,
-            udata_size: self.udata_size,
-            idata_size: self.idata_size,
-            old_def_version: self.old_def_version,
-            old_imp_version: self.old_imp_version,
-            current_version: self.current_version,
-            has_flags: self.has_flags,
-            is_pascal: self.is_pascal,
-            is_fourbyteint: self.is_fourbyteint,
-            is_eightdouble: self.is_eightdouble,
-            is_mc68881: is_mc68881,
-            basereg: self.basereg,
-            reserved3: self.reserved3,
-            reserved4: self.reserved4,
-        }
+    pub fn old_imp_version(&self) -> u32 {
+        self.old_imp_version
     }
 
-    pub fn is_pascal(self, is_pascal: u8) -> Self {
-        Self {
-            version: self.version,
-            flags: self.flags,
-            obj_size: self.obj_size,
-            nametable_offset: self.nametable_offset,
-            nametable_names: self.nametable_names,
-            symtable_offset: self.symtable_offset,
-            symtable_size: self.symtable_size,
-            reserved1: self.reserved1,
-            code_size: self.code_size,
-            udata_size: self.udata_size,
-            idata_size: self.idata_size,
-            old_def_version: self.old_def_version,
-            old_imp_version: self.old_imp_version,
-            current_version: self.current_version,
-            has_flags: self.has_flags,
-            is_pascal: is_pascal,
-            is_fourbyteint: self.is_fourbyteint,
-            is_eightdouble: self.is_eightdouble,
-            is_mc68881: self.is_mc68881,
-            basereg: self.basereg,
-            reserved3: self.reserved3,
-            reserved4: self.reserved4,
-        }
+    pub fn current_version(&self) -> u32 {
+        self.current_version
+    }
+
+    pub fn version(&self) -> u16 {
+        self.version
+    }
+
+    pub fn flags(&self) -> ObjectFlags {
+        self.flags
+    }
+
+    pub fn has_flags(&self) -> u8 {
+        self.has_flags
+    }
+
+    pub fn is_pascal(&self) -> u8 {
+        self.is_pascal
+    }
+
+    pub fn is_fourbyteint(&self) -> u8 {
+        self.is_fourbyteint
+    }
+
+    pub fn is_eightdouble(&self) -> u8 {
+        self.is_eightdouble
+    }
+
+    pub fn is_mc68881(&self) -> u8 {
+        self.is_mc68881
+    }
+
+    pub fn basereg(&self) -> u8 {
+        self.basereg
+    }
+
+    pub fn reserved3(&self) -> u8 {
+        self.reserved3
+    }
+
+    pub fn reserved4(&self) -> u8 {
+        self.reserved4
     }
 }
 
@@ -594,50 +260,17 @@ impl ObjectHeader {
 pub struct MetrowerksObject {
     header: ObjectHeader,
     names: Vec<NameEntry>,
-    symtab: SymbolTable,
+    symtab: Option<SymbolTable>,
     hunks: CodeHunks,
 }
 
-impl Default for MetrowerksObject {
-    fn default() -> Self {
-        Self {
-            header: ObjectHeader::default(),
-            names: vec![],
-            symtab: SymbolTable::default(),
-            hunks: CodeHunks::default(),
-        }
-    }
-}
-
 impl MetrowerksObject {
-    fn new(
-        header: ObjectHeader,
-        names: Vec<NameEntry>,
-        symtab: SymbolTable,
-        hunks: CodeHunks,
-    ) -> Self {
-        Self {
-            header: header,
-            names: names,
-            symtab: symtab,
-            hunks: hunks,
-        }
-    }
-
     pub fn names(&self) -> &[NameEntry] {
         &self.names
     }
 
-    pub fn names_iter(&self) -> Iter<NameEntry> {
-        self.names.iter()
-    }
-
-    pub fn symbols(&self) -> &SymbolTable {
-        &self.symtab
-    }
-
-    pub fn hunk_iter(&self) -> Iter<Hunk> {
-        self.hunks.iter()
+    pub fn symbols(&self) -> Option<&SymbolTable> {
+        self.symtab.as_ref()
     }
 
     pub fn hunks(&self) -> &CodeHunks {
@@ -649,310 +282,66 @@ impl MetrowerksObject {
     }
 }
 
-#[derive(Debug, PartialEq)]
-enum ObjectParseState {
-    ObjectHeaderStart,
-    ObjectHeaderMagicWord,
-    ObjectHeaderVersion,
-    ObjectHeaderFlags,
-    ObjectHeaderObjectSize,
-    ObjectHeaderNameTableOffset,
-    ObjectHeaderNameTableCount,
-    ObjectHeaderSymTableOffset,
-    ObjectHeaderSymTableSize,
-    ObjectHeaderReserved1,
-    ObjectHeaderCodeSize,
-    ObjectHeaderUninitializedDataSize,
-    ObjectHeaderInitializedDataSize,
-    ObjectHeaderCFM68kOldDefinitionVersion,
-    ObjectHeaderCFM68kOldImplmentationVersion,
-    ObjectHeaderCFM68kCurrentVersion,
-    ObjectHeaderReservedHasFlags,
-    ObjectHeaderReservedIsPascal,
-    ObjectHeaderReservedIsFourByteInt,
-    ObjectHeaderReservedIsEightDouble,
-    ObjectHeaderReservedIsMC68881,
-    ObjectHeaderReservedBaseReg,
-    ObjectHeaderReserved3,
-    ObjectHeaderReserved4,
-
-    ProcessNameTable,
-    ProcessName,
-    ProcessSymbolTable,
-    ProcessObjectData,
-
-    End,
-}
-
-impl Default for ObjectParseState {
-    fn default() -> Self {
-        ObjectParseState::ObjectHeaderStart
-    }
-}
-
-fn parse_object(value: &[u8]) -> Result<MetrowerksObject, String> {
-    let mut header: ObjectHeader = ObjectHeader::default();
-
-    let mut remaining_names: usize = 0;
-
-    let mut name_bytes: &[u8] = <&[u8]>::default();
-    let mut name_table: Vec<NameEntry> = vec![];
-    let mut name_id = 0;
-
-    let mut symbol_table: SymbolTable = SymbolTable::default();
-
-    let mut code_objects: CodeHunks = CodeHunks::default();
-
-    let mut state: ObjectParseState = ObjectParseState::default();
-    while state != ObjectParseState::End {
-        state = match state {
-            ObjectParseState::ObjectHeaderStart => ObjectParseState::ObjectHeaderMagicWord,
-            ObjectParseState::ObjectHeaderMagicWord => {
-                let x = util::convert_be_u32(&value[0..4].try_into().unwrap());
-
-                if x != ObjectMagicWord::ObjectMagicWord as u32 {
-                    return Err(format!(
-                        "Bad magic word, Expected: {}, got: {}",
-                        ObjectMagicWord::ObjectMagicWord as u32,
-                        x
-                    ));
-                }
-
-                ObjectParseState::ObjectHeaderVersion
-            }
-            ObjectParseState::ObjectHeaderVersion => {
-                let x = util::convert_be_u16(&value[4..6].try_into().unwrap());
-
-                header = header.version(x);
-
-                ObjectParseState::ObjectHeaderFlags
-            }
-            ObjectParseState::ObjectHeaderFlags => {
-                let x = util::convert_be_u16(&value[6..8].try_into().unwrap());
-
-                header = header.flags(ObjectFlags::from_bits(x).unwrap());
-
-                ObjectParseState::ObjectHeaderObjectSize
-            }
-
-            /* Object Segment */
-            ObjectParseState::ObjectHeaderObjectSize => {
-                let x = util::convert_be_u32(&value[8..12].try_into().unwrap());
-
-                header = header.obj_size(x);
-
-                ObjectParseState::ProcessObjectData
-            }
-            ObjectParseState::ProcessObjectData => {
-                let start = header.obj_start();
-                let end = header.obj_end();
-
-                let object_bytes = &value[start..end];
-
-                code_objects = CodeHunks::try_from(object_bytes).unwrap();
-
-                ObjectParseState::ObjectHeaderNameTableOffset
-            }
-
-            /* Name table */
-            ObjectParseState::ObjectHeaderNameTableOffset => {
-                let x = util::convert_be_u32(&value[12..16].try_into().unwrap());
-
-                header = header.nametable_offset(x);
-
-                ObjectParseState::ObjectHeaderNameTableCount
-            }
-            ObjectParseState::ObjectHeaderNameTableCount => {
-                let x = util::convert_be_u32(&value[16..20].try_into().unwrap());
-
-                if x != 0 {
-                    header = header.num_names(x - 1);
-                    ObjectParseState::ProcessNameTable
-                } else {
-                    ObjectParseState::ObjectHeaderSymTableOffset
-                }
-            }
-            ObjectParseState::ProcessNameTable => {
-                let start: usize = header.nametable_start();
-
-                if start != 0 {
-                    name_bytes = &value[start..];
-                    remaining_names = header.nametable_count();
-                    name_id = 1;
-
-                    ObjectParseState::ProcessName
-                } else {
-                    ObjectParseState::ObjectHeaderSymTableOffset
-                }
-            }
-            ObjectParseState::ProcessName => {
-                let s =
-                    CStr::from_bytes_until_nul(&name_bytes[2..usize::min(258, name_bytes.len())])
-                        .unwrap()
-                        .to_owned();
-
-                let end_of_entry = 2 + s.as_bytes().len() + 1;
-                name_bytes = &name_bytes[end_of_entry..];
-                name_table.push(NameEntry::new(name_id, s));
-
-                remaining_names -= 1;
-                name_id += 1;
-
-                if remaining_names != 0 {
-                    ObjectParseState::ProcessName
-                } else {
-                    ObjectParseState::ObjectHeaderSymTableOffset
-                }
-            }
-
-            /* Symbol Table */
-            ObjectParseState::ObjectHeaderSymTableOffset => {
-                let x = util::convert_be_u32(&value[20..24].try_into().unwrap());
-
-                header = header.symtable_offset(x);
-
-                ObjectParseState::ObjectHeaderSymTableSize
-            }
-            ObjectParseState::ObjectHeaderSymTableSize => {
-                let x = util::convert_be_u32(&value[24..28].try_into().unwrap());
-
-                header = header.symtable_size(x);
-
-                ObjectParseState::ProcessSymbolTable
-            }
-            ObjectParseState::ProcessSymbolTable => {
-                let start = header.symtable_start();
-                let end = header.symtable_end();
-
-                if start != 0 {
-                    let symbol_bytes = &value[start..end];
-
-                    symbol_table = SymbolTable::try_from(symbol_bytes).unwrap();
-                }
-
-                ObjectParseState::ObjectHeaderReserved1
-            }
-
-            /* Metrowerks Reserved Field */
-            ObjectParseState::ObjectHeaderReserved1 => {
-                let x = util::convert_be_u32(&value[28..32].try_into().unwrap());
-
-                if x != 0 {
-                    return Err(format!("{:#?} is not 0L, got: {}", state, x));
-                }
-
-                ObjectParseState::ObjectHeaderCodeSize
-            }
-
-            /* Code and Data sizes */
-            ObjectParseState::ObjectHeaderCodeSize => {
-                let x = util::convert_be_u32(&value[32..36].try_into().unwrap());
-
-                header = header.code_size(x);
-
-                ObjectParseState::ObjectHeaderUninitializedDataSize
-            }
-            ObjectParseState::ObjectHeaderUninitializedDataSize => {
-                let x = util::convert_be_u32(&value[36..40].try_into().unwrap());
-
-                header = header.udata_size(x);
-
-                ObjectParseState::ObjectHeaderInitializedDataSize
-            }
-            ObjectParseState::ObjectHeaderInitializedDataSize => {
-                let x = util::convert_be_u32(&value[40..44].try_into().unwrap());
-
-                header = header.idata_size(x);
-
-                ObjectParseState::ObjectHeaderCFM68kOldDefinitionVersion
-            }
-
-            /* CFM68K fields: TODO */
-            ObjectParseState::ObjectHeaderCFM68kOldDefinitionVersion => {
-                let _x = util::convert_be_u32(&value[44..48].try_into().unwrap());
-
-                ObjectParseState::ObjectHeaderCFM68kOldImplmentationVersion
-            }
-            ObjectParseState::ObjectHeaderCFM68kOldImplmentationVersion => {
-                let _x = util::convert_be_u32(&value[48..52].try_into().unwrap());
-
-                ObjectParseState::ObjectHeaderCFM68kCurrentVersion
-            }
-            ObjectParseState::ObjectHeaderCFM68kCurrentVersion => {
-                let _x = util::convert_be_u32(&value[52..56].try_into().unwrap());
-
-                ObjectParseState::ObjectHeaderReservedHasFlags
-            }
-
-            /* Metrowerks Reserved Fields */
-            ObjectParseState::ObjectHeaderReservedHasFlags => {
-                let x = value[56];
-                header = header.has_flags(x);
-
-                ObjectParseState::ObjectHeaderReservedIsPascal
-            }
-            ObjectParseState::ObjectHeaderReservedIsPascal => {
-                let x = value[57];
-                header = header.is_pascal(x);
-
-                ObjectParseState::ObjectHeaderReservedIsFourByteInt
-            }
-            ObjectParseState::ObjectHeaderReservedIsFourByteInt => {
-                let x = value[58];
-                header = header.is_fourbyteint(x);
-
-                ObjectParseState::ObjectHeaderReservedIsEightDouble
-            }
-            ObjectParseState::ObjectHeaderReservedIsEightDouble => {
-                let x = value[59];
-                header = header.is_eightdouble(x);
-
-                ObjectParseState::ObjectHeaderReservedIsMC68881
-            }
-            ObjectParseState::ObjectHeaderReservedIsMC68881 => {
-                let x = value[60];
-                header = header.is_mc68881(x);
-
-                ObjectParseState::ObjectHeaderReservedBaseReg
-            }
-            ObjectParseState::ObjectHeaderReservedBaseReg => {
-                let x = value[61];
-                header = header.basereg(x);
-
-                ObjectParseState::ObjectHeaderReserved3
-            }
-            ObjectParseState::ObjectHeaderReserved3 => {
-                let x = value[62];
-                if x != 0 {
-                    return Err(format!("{:#?} is not 0L, got: {}", state, x));
-                }
-
-                ObjectParseState::ObjectHeaderReserved4
-            }
-            ObjectParseState::ObjectHeaderReserved4 => {
-                let x = value[63];
-                if x != 0 {
-                    return Err(format!("{:#?} is not 0L, got: {}", state, x));
-                }
-
-                ObjectParseState::End
-            }
-            _ => todo!(),
-        }
-    }
-
-    Ok(MetrowerksObject::new(
-        header,
-        name_table,
-        symbol_table,
-        code_objects,
-    ))
-}
-
 impl TryFrom<&[u8]> for MetrowerksObject {
     type Error = String;
 
     fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
-        parse_object(value)
+        let header = ObjectHeader::try_from(value)?;
+
+        let name_table = if header.nametable_start() != 0 {
+            let mut names: Vec<NameEntry> = vec![];
+            let mut name_bytes = &value[header.nametable_start()..];
+            let mut remaining_names = header.nametable_count();
+            let mut name_id = 1;
+            while remaining_names > 0 {
+                let s =
+                    CStr::from_bytes_until_nul(&name_bytes[2..usize::min(257, name_bytes.len())])
+                        .unwrap()
+                        .to_str()
+                        .unwrap()
+                        .to_owned();
+                let end_of_entry = 2 + s.as_bytes().len() + 1;
+                name_bytes = &name_bytes[end_of_entry..];
+                names.push(NameEntry {
+                    id: name_id,
+                    name: s,
+                });
+
+                remaining_names -= 1;
+                name_id += 1;
+            }
+            names
+        } else {
+            vec![]
+        };
+
+        // SymTab Processing
+        let sym_tab_start = header.symtable_start();
+        let sym_tab_end = header.symtable_end();
+
+        let symtab = if sym_tab_start != 0 {
+            let symbol_bytes = &value[sym_tab_start..sym_tab_end];
+
+            Option::Some(SymbolTable::try_from(symbol_bytes).unwrap())
+        } else {
+            Option::None
+        };
+
+        // Object code processing
+        let code_objects = {
+            let start = header.obj_start();
+            let end = header.obj_end();
+
+            let object_bytes = &value[start..end];
+
+            CodeHunks::try_from(object_bytes).unwrap()
+        };
+
+        Ok(MetrowerksObject {
+            header: header,
+            names: name_table,
+            symtab: symtab,
+            hunks: code_objects,
+        })
     }
 }

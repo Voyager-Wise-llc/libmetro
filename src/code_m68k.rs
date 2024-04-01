@@ -1,22 +1,18 @@
-use std::slice::Iter;
+use std::ops::Deref;
+
+use crate::util::RawLength;
 
 use super::util::{convert_be_u16, convert_be_u32, NameIdFromObject};
 
 #[derive(Debug, Clone)]
 pub struct ReservedHunk {}
 
-impl Default for ReservedHunk {
-    fn default() -> Self {
-        panic!("Encountered Reserved Hunk");
-    }
-}
-
 #[derive(Debug, Clone)]
 pub struct ObjSimpleHunk {}
 
-impl Default for ObjSimpleHunk {
-    fn default() -> Self {
-        Self {}
+impl RawLength for ObjSimpleHunk {
+    fn raw_length(&self) -> usize {
+        0
     }
 }
 
@@ -37,41 +33,23 @@ pub struct ObjCodeHunk {
     code: Vec<u8>,
 }
 
-impl Default for ObjCodeHunk {
-    fn default() -> Self {
-        Self {
-            name_id: 0,
-            sym_offset: 0,
-            sym_decl_offset: 0,
-            special_flag: ObjCodeFlag::None,
-            code: vec![],
-        }
+impl Deref for ObjCodeHunk {
+    type Target = Vec<u8>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.code
+    }
+}
+
+impl RawLength for ObjCodeHunk {
+    fn raw_length(&self) -> usize {
+        12 + self.code.len()
     }
 }
 
 impl ObjCodeHunk {
-    fn new(
-        name_id: u32,
-        sym_offset: u32,
-        sym_decl_offset: u32,
-        flag: ObjCodeFlag,
-        code: &[u8],
-    ) -> Self {
-        Self {
-            name_id: name_id,
-            sym_offset: sym_offset,
-            sym_decl_offset: sym_decl_offset,
-            code: code.to_owned(),
-            special_flag: flag,
-        }
-    }
-
     pub fn has_symtab(&self) -> bool {
         self.sym_offset != 0x80000000
-    }
-
-    pub fn code_iter(&self) -> Iter<u8> {
-        self.code.iter()
     }
 
     pub fn sym_decl_offset(&self) -> u32 {
@@ -88,18 +66,10 @@ pub struct ObjInitHunk {
     code: Vec<u8>,
 }
 
-impl ObjInitHunk {
-    fn new(code: &[u8]) -> Self {
-        Self {
-            code: code.to_owned(),
-        }
-    }
+impl Deref for ObjInitHunk {
+    type Target = Vec<u8>;
 
-    pub fn code_iter(&self) -> Iter<u8> {
-        self.code.iter()
-    }
-
-    pub fn code(&self) -> &[u8] {
+    fn deref(&self) -> &Self::Target {
         &self.code
     }
 }
@@ -107,27 +77,22 @@ impl ObjInitHunk {
 #[derive(NameIdFromObject, Debug, Clone)]
 pub struct ObjDataHunk {
     name_id: u32,
-    sym_type_id: u32,
+    sym_offset: u32,
     sym_decl_offset: u32,
     data: Vec<u8>,
 }
 
+impl Deref for ObjDataHunk {
+    type Target = Vec<u8>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.data
+    }
+}
+
 impl ObjDataHunk {
-    fn new(name_id: u32, sym_type_id: u32, sym_decl_offset: u32, code: &[u8]) -> Self {
-        Self {
-            name_id: name_id,
-            sym_type_id: sym_type_id,
-            sym_decl_offset: sym_decl_offset,
-            data: code.to_owned(),
-        }
-    }
-
-    pub fn data_iter(&self) -> Iter<u8> {
-        self.data.iter()
-    }
-
-    pub fn sym_type_id(&self) -> u32 {
-        self.sym_type_id
+    pub fn sym_offset(&self) -> u32 {
+        self.sym_offset
     }
 
     pub fn sym_decl_offset(&self) -> u32 {
@@ -142,13 +107,6 @@ pub struct ObjEntryHunk {
 }
 
 impl ObjEntryHunk {
-    fn new(name_id: u32, offset: u32) -> Self {
-        Self {
-            name_id: name_id,
-            offset: offset,
-        }
-    }
-
     pub fn offset(&self) -> u32 {
         self.offset
     }
@@ -161,13 +119,6 @@ pub struct ObjXRefPair {
 }
 
 impl ObjXRefPair {
-    fn new(offset: u32, value: u32) -> Self {
-        Self {
-            offset: offset,
-            value: value,
-        }
-    }
-
     pub fn offset(&self) -> u32 {
         self.offset
     }
@@ -183,16 +134,11 @@ pub struct ObjXRefHunk {
     pairs: Vec<ObjXRefPair>,
 }
 
-impl ObjXRefHunk {
-    fn new(name_id: u32, pairs: Vec<ObjXRefPair>) -> Self {
-        Self {
-            name_id: name_id,
-            pairs: pairs,
-        }
-    }
+impl Deref for ObjXRefHunk {
+    type Target = Vec<ObjXRefPair>;
 
-    pub fn pairs_iter(&self) -> Iter<ObjXRefPair> {
-        self.pairs.iter()
+    fn deref(&self) -> &Self::Target {
+        &self.pairs
     }
 }
 
@@ -201,19 +147,11 @@ pub struct ObjExceptInfo {
     info: Vec<u8>,
 }
 
-impl ObjExceptInfo {
-    fn new(info: &[u8]) -> Self {
-        Self {
-            info: info.to_vec(),
-        }
-    }
+impl Deref for ObjExceptInfo {
+    type Target = Vec<u8>;
 
-    pub fn info(&self) -> &[u8] {
+    fn deref(&self) -> &Self::Target {
         &self.info
-    }
-
-    pub fn info_iter(&self) -> Iter<u8> {
-        self.info.iter()
     }
 }
 
@@ -226,15 +164,6 @@ pub struct ObjContainerHunk {
 }
 
 impl ObjContainerHunk {
-    fn new(name_id: u32, old_def_version: u32, old_imp_version: u32, current_version: u32) -> Self {
-        Self {
-            name_id: name_id,
-            old_def_version: old_def_version,
-            old_imp_version: old_imp_version,
-            current_version: current_version,
-        }
-    }
-
     pub fn old_def_version(&self) -> u32 {
         self.old_def_version
     }
@@ -253,12 +182,6 @@ pub struct ObjImportHunk {
     name_id: u32,
 }
 
-impl ObjImportHunk {
-    fn new(name_id: u32) -> Self {
-        Self { name_id: name_id }
-    }
-}
-
 #[derive(NameIdFromObject, Debug, Clone)]
 pub struct DataPointerHunk {
     name_id: u32,
@@ -266,13 +189,6 @@ pub struct DataPointerHunk {
 }
 
 impl DataPointerHunk {
-    fn new(name_id: u32, data_id: u32) -> Self {
-        Self {
-            name_id: name_id,
-            data_name: data_id,
-        }
-    }
-
     pub fn data_name_id(&self) -> u32 {
         self.data_name
     }
@@ -285,13 +201,6 @@ pub struct XPointerHunk {
 }
 
 impl XPointerHunk {
-    fn new(name_id: u32, xv_id: u32) -> Self {
-        Self {
-            name_id: name_id,
-            xvector_name: xv_id,
-        }
-    }
-
     pub fn xvector_name(&self) -> u32 {
         self.xvector_name
     }
@@ -302,14 +211,8 @@ pub struct XVectorHunk {
     name_id: u32,
     function_name: u32,
 }
-impl XVectorHunk {
-    fn new(xv_name: u32, f_name: u32) -> Self {
-        Self {
-            name_id: xv_name,
-            function_name: f_name,
-        }
-    }
 
+impl XVectorHunk {
     pub fn function_name(&self) -> u32 {
         self.function_name
     }
@@ -321,13 +224,6 @@ pub struct ObjSourceHunk {
     moddate: u32,
 }
 impl ObjSourceHunk {
-    fn new(name_id: u32, moddate: u32) -> Self {
-        Self {
-            name_id: name_id,
-            moddate: moddate,
-        }
-    }
-
     pub fn moddate(&self) -> u32 {
         self.moddate
     }
@@ -337,11 +233,6 @@ impl ObjSourceHunk {
 pub struct ObjSegHunk {
     name_id: u32,
 }
-impl ObjSegHunk {
-    fn new(name_id: u32) -> Self {
-        Self { name_id: name_id }
-    }
-}
 
 #[derive(NameIdFromObject, Debug, Clone)]
 pub struct ObjMethHunk {
@@ -349,13 +240,6 @@ pub struct ObjMethHunk {
     size: u32,
 }
 impl ObjMethHunk {
-    fn new(name_id: u32, size: u32) -> Self {
-        Self {
-            name_id: name_id,
-            size: size,
-        }
-    }
-
     pub fn size(&self) -> u32 {
         self.size
     }
@@ -367,13 +251,6 @@ pub struct ObjClassPair {
     bias: u32,
 }
 impl ObjClassPair {
-    fn new(base_id: u32, bias: u32) -> Self {
-        Self {
-            base_id: base_id,
-            bias: bias,
-        }
-    }
-
     pub fn base_id(&self) -> u32 {
         self.base_id
     }
@@ -390,25 +267,17 @@ pub struct ObjClassHunk {
     pairs: Vec<ObjClassPair>,
 }
 
-impl ObjClassHunk {
-    fn new(name_id: u32, num_methods: u16, pairs: Vec<ObjClassPair>) -> Self {
-        Self {
-            name_id: name_id,
-            methods: num_methods,
-            pairs: pairs,
-        }
-    }
+impl Deref for ObjClassHunk {
+    type Target = Vec<ObjClassPair>;
 
-    pub fn methods(&self) -> u16 {
-        self.methods
-    }
-
-    pub fn pairs(&self) -> &[ObjClassPair] {
+    fn deref(&self) -> &Self::Target {
         &self.pairs
     }
+}
 
-    pub fn pairs_iter(&self) -> Iter<ObjClassPair> {
-        self.pairs.iter()
+impl ObjClassHunk {
+    pub fn methods(&self) -> u16 {
+        self.methods
     }
 }
 
@@ -470,20 +339,6 @@ pub struct Hunk {
     hunk: HunkType,
 }
 
-impl Default for Hunk {
-    fn default() -> Self {
-        Self {
-            hunk: HunkType::Undefined,
-        }
-    }
-}
-
-impl Hunk {
-    fn new(hunk: HunkType) -> Self {
-        Self { hunk: hunk }
-    }
-}
-
 #[allow(non_camel_case_types)]
 #[repr(u16)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -538,11 +393,9 @@ enum RawHunkType {
     HUNK_WEAK_IMPORT_CONTAINER,
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug)]
 enum HunkParseState {
-    Start,
-
-    ProcessTag,
+    ParseTag,
     ParseObjSimpleHunk(RawHunkType),
 
     ParseObjCodeHunk(RawHunkType),
@@ -567,14 +420,23 @@ enum HunkParseState {
 
     ParseReservedHunk(RawHunkType),
 
-    CommitHunk,
+    CommitHunk(Hunk),
 
     End,
 }
 
+impl PartialEq for HunkParseState {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::CommitHunk(_), Self::CommitHunk(_)) => true,
+            _ => core::mem::discriminant(self) == core::mem::discriminant(other),
+        }
+    }
+}
+
 impl Default for HunkParseState {
     fn default() -> Self {
-        HunkParseState::Start
+        HunkParseState::ParseTag
     }
 }
 
@@ -738,541 +600,547 @@ pub struct CodeHunks {
     hunks: Vec<Hunk>,
 }
 
-impl Default for CodeHunks {
-    fn default() -> Self {
-        Self { hunks: vec![] }
+impl Deref for CodeHunks {
+    type Target = Vec<Hunk>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.hunks
     }
-}
-
-impl CodeHunks {
-    pub fn iter(&self) -> Iter<Hunk> {
-        self.hunks.iter()
-    }
-
-    pub fn len(&self) -> usize {
-        self.hunks.len()
-    }
-}
-
-fn parse_code(value: &[u8]) -> Result<CodeHunks, String> {
-    let mut data: &[u8] = value;
-
-    let mut hunks: Vec<Hunk> = vec![];
-
-    let mut current_hunk = Hunk::default();
-
-    let mut state: HunkParseState = HunkParseState::default();
-    while state != HunkParseState::End {
-        state = match state {
-            HunkParseState::Start => {
-                current_hunk = Hunk::default();
-
-                HunkParseState::ProcessTag
-            }
-            HunkParseState::ProcessTag => {
-                let tag = convert_be_u16(&data[0..2].try_into().unwrap());
-
-                data = &data[2..];
-
-                HunkParseState::try_from(tag).unwrap()
-            }
-            HunkParseState::ParseObjSimpleHunk(tag) => {
-                let hunk = match tag {
-                    RawHunkType::HUNK_START => HunkType::Start(ObjSimpleHunk::default()),
-                    RawHunkType::HUNK_END => HunkType::End(ObjSimpleHunk::default()),
-
-                    RawHunkType::HUNK_MULTIDEF_GLOBAL => {
-                        HunkType::GlobalMultiDef(ObjSimpleHunk::default())
-                    }
-                    RawHunkType::HUNK_OVERLOAD_GLOBAL => {
-                        HunkType::GlobalOverload(ObjSimpleHunk::default())
-                    }
-
-                    RawHunkType::HUNK_CFM_EXPORT => HunkType::CFMExport(ObjSimpleHunk::default()),
-
-                    _ => {
-                        return Err(format!(
-                            "Bad branch selection in {:#?} for tag: {:#?}",
-                            state, tag
-                        ))
-                    }
-                };
-
-                current_hunk = Hunk::new(hunk);
-
-                HunkParseState::CommitHunk
-            }
-            HunkParseState::ParseReservedHunk(tag) => {
-                let hunk = match tag {
-                    RawHunkType::HUNK_LIBRARY_BREAK => {
-                        HunkType::LibraryBreak(ReservedHunk::default())
-                    }
-
-                    RawHunkType::HUNK_DIFF_8BIT => HunkType::Diff8Bit(ReservedHunk::default()),
-                    RawHunkType::HUNK_DIFF_16BIT => HunkType::Diff16Bit(ReservedHunk::default()),
-                    RawHunkType::HUNK_DIFF_32BIT => HunkType::Diff32Bit(ReservedHunk::default()),
-
-                    RawHunkType::HUNK_DEINIT_CODE => HunkType::DeInitCode(ReservedHunk::default()),
-
-                    RawHunkType::HUNK_ILLEGAL1 => HunkType::Illegal1(ReservedHunk::default()),
-                    RawHunkType::HUNK_ILLEGAL2 => HunkType::Illegal2(ReservedHunk::default()),
-
-                    _ => {
-                        return Err(format!(
-                            "Bad branch selection in {:#?} for tag: {:#?}",
-                            state, tag
-                        ))
-                    }
-                };
-
-                current_hunk = Hunk::new(hunk);
-
-                HunkParseState::CommitHunk
-            }
-            HunkParseState::ParseObjCodeHunk(tag) => {
-                let special = match &hunks.last().unwrap().hunk {
-                    HunkType::CFMExport(_) => ObjCodeFlag::CFMExport,
-                    HunkType::GlobalOverload(_) => ObjCodeFlag::GlobalOverload,
-                    HunkType::GlobalMultiDef(_) => ObjCodeFlag::GlobalMultiDef,
-                    _ => ObjCodeFlag::None,
-                };
-
-                let name_id = convert_be_u32(&data[0..4].try_into().unwrap());
-                let size = convert_be_u32(&data[4..8].try_into().unwrap());
-                let sym_offset = convert_be_u32(&data[8..12].try_into().unwrap());
-                let sym_decl_offset = convert_be_u32(&data[12..16].try_into().unwrap());
-
-                data = &data[16..];
-                let code = &data[0..size as usize];
-                data = &data[size as usize..];
-
-                let obj_hunk =
-                    ObjCodeHunk::new(name_id, sym_offset, sym_decl_offset, special, code);
-
-                let hunk = match tag {
-                    RawHunkType::HUNK_LOCAL_CODE => HunkType::LocalCode(obj_hunk),
-                    RawHunkType::HUNK_GLOBAL_CODE => HunkType::GlobalCode(obj_hunk),
-
-                    _ => {
-                        return Err(format!(
-                            "Bad branch selection in {:#?} for tag: {:#?}",
-                            state, tag
-                        ))
-                    }
-                };
-
-                current_hunk = Hunk::new(hunk);
-
-                HunkParseState::CommitHunk
-            }
-            HunkParseState::ParseInitCodeHunk(tag) => {
-                let size = convert_be_u32(&data[0..4].try_into().unwrap());
-
-                data = &data[4..];
-                let code = &data[0..size as usize];
-                data = &data[size as usize..];
-
-                let obj_hunk = ObjInitHunk::new(code);
-
-                let hunk = match tag {
-                    RawHunkType::HUNK_INIT_CODE => HunkType::InitCode(obj_hunk),
-
-                    _ => {
-                        return Err(format!(
-                            "Bad branch selection in {:#?} for tag: {:#?}",
-                            state, tag
-                        ))
-                    }
-                };
-
-                current_hunk = Hunk::new(hunk);
-
-                HunkParseState::CommitHunk
-            }
-
-            HunkParseState::ParseDataHunk(tag) => {
-                let name_id = convert_be_u32(&data[0..4].try_into().unwrap());
-                let size = convert_be_u32(&data[4..8].try_into().unwrap());
-                let sym_offset = convert_be_u32(&data[8..12].try_into().unwrap());
-                let sym_decl_offset = convert_be_u32(&data[12..16].try_into().unwrap());
-
-                data = &data[16..];
-
-                // Capture initialized data
-                let code = match tag {
-                    RawHunkType::HUNK_GLOBAL_IDATA
-                    | RawHunkType::HUNK_LOCAL_IDATA
-                    | RawHunkType::HUNK_GLOBAL_FARIDATA
-                    | RawHunkType::HUNK_LOCAL_FARIDATA => {
-                        let c = &data[0..size as usize];
-                        data = &data[size as usize..];
-                        c
-                    }
-                    _ => <&[u8]>::default(),
-                };
-
-                let obj_hunk = ObjDataHunk::new(name_id, sym_offset, sym_decl_offset, code);
-
-                let hunk = match tag {
-                    RawHunkType::HUNK_GLOBAL_IDATA => HunkType::GlobalInitializedData(obj_hunk),
-                    RawHunkType::HUNK_GLOBAL_UDATA => HunkType::GlobalUninitializedData(obj_hunk),
-                    RawHunkType::HUNK_LOCAL_IDATA => HunkType::LocalInitializedData(obj_hunk),
-                    RawHunkType::HUNK_LOCAL_UDATA => HunkType::LocalUninitializedData(obj_hunk),
-                    RawHunkType::HUNK_GLOBAL_FARIDATA => {
-                        HunkType::GlobalFarInitializedData(obj_hunk)
-                    }
-                    RawHunkType::HUNK_GLOBAL_FARUDATA => {
-                        HunkType::GlobalFarUninitializedData(obj_hunk)
-                    }
-                    RawHunkType::HUNK_LOCAL_FARIDATA => HunkType::LocalFarInitializedData(obj_hunk),
-                    RawHunkType::HUNK_LOCAL_FARUDATA => {
-                        HunkType::LocalFarUninitializedData(obj_hunk)
-                    }
-                    _ => {
-                        return Err(format!(
-                            "Bad branch selection in {:#?} for tag: {:#?}",
-                            state, tag
-                        ))
-                    }
-                };
-
-                current_hunk = Hunk::new(hunk);
-
-                HunkParseState::CommitHunk
-            }
-            HunkParseState::ParseAltEntryHunk(tag) => {
-                let name_id = convert_be_u32(&data[0..4].try_into().unwrap());
-                let offset = convert_be_u32(&data[4..8].try_into().unwrap());
-
-                data = &data[8..];
-
-                let entry_hunk = ObjEntryHunk::new(name_id, offset);
-
-                let hunk = match tag {
-                    RawHunkType::HUNK_GLOBAL_ENTRY => HunkType::GlobalEntry(entry_hunk),
-                    RawHunkType::HUNK_LOCAL_ENTRY => HunkType::LocalEntry(entry_hunk),
-                    _ => {
-                        return Err(format!(
-                            "Bad branch selection in {:#?} for tag: {:#?}",
-                            state, tag
-                        ))
-                    }
-                };
-
-                current_hunk = Hunk::new(hunk);
-
-                HunkParseState::CommitHunk
-            }
-            HunkParseState::ParseXRefHunk(tag) => {
-                let name_id = convert_be_u32(&data[0..4].try_into().unwrap());
-                let num_pairs = convert_be_u16(&data[4..6].try_into().unwrap());
-
-                data = &data[6..];
-
-                // process pairs
-                let mut pairs: Vec<ObjXRefPair> = vec![];
-                for _idx in 0..num_pairs {
-                    let offset = convert_be_u32(&data[0..4].try_into().unwrap());
-                    let value = convert_be_u32(&data[4..8].try_into().unwrap());
-
-                    pairs.push(ObjXRefPair::new(offset, value));
-
-                    data = &data[8..]
-                }
-
-                let xref_hunk = ObjXRefHunk::new(name_id, pairs);
-
-                let hunk = match tag {
-                    RawHunkType::HUNK_XREF_CODEJT16BIT => HunkType::XRefCodeJT16Bit(xref_hunk),
-                    RawHunkType::HUNK_XREF_DATA16BIT => HunkType::XRefData16Bit(xref_hunk),
-                    RawHunkType::HUNK_XREF_CODE16BIT => HunkType::XRefCode16Bit(xref_hunk),
-                    RawHunkType::HUNK_XREF_32BIT => HunkType::XRef32Bit(xref_hunk),
-                    RawHunkType::HUNK_XREF_CODE32BIT => HunkType::XRefCode32Bit(xref_hunk),
-                    RawHunkType::HUNK_XREF_PCREL32BIT => HunkType::XRefPCRelative32Bit(xref_hunk),
-                    RawHunkType::HUNK_XREF_AMBIGUOUS16BIT => {
-                        HunkType::XRefAmbiguous16Bit(xref_hunk)
-                    }
-
-                    _ => {
-                        return Err(format!(
-                            "Bad branch selection in {:#?} for tag: {:#?}",
-                            state, tag
-                        ))
-                    }
-                };
-
-                current_hunk = Hunk::new(hunk);
-
-                HunkParseState::CommitHunk
-            }
-            HunkParseState::ParseExceptInfoHunk(tag) => {
-                let size = convert_be_u32(&data[0..4].try_into().unwrap());
-
-                data = &data[4..];
-                let code = &data[0..size as usize];
-                data = &data[size as usize..];
-
-                let exp_hunk = ObjExceptInfo::new(code);
-
-                let hunk = match tag {
-                    RawHunkType::HUNK_EXCEPTION_INFO => HunkType::ExceptionInfo(exp_hunk),
-
-                    _ => {
-                        return Err(format!(
-                            "Bad branch selection in {:#?} for tag: {:#?}",
-                            state, tag
-                        ))
-                    }
-                };
-
-                current_hunk = Hunk::new(hunk);
-
-                HunkParseState::CommitHunk
-            }
-            HunkParseState::ParseObjContainerHunk(tag) => {
-                let name_id = convert_be_u32(&data[0..4].try_into().unwrap());
-                let old_def = convert_be_u32(&data[4..8].try_into().unwrap());
-                let old_impl = convert_be_u32(&data[8..12].try_into().unwrap());
-                let curr_version = convert_be_u32(&data[12..16].try_into().unwrap());
-
-                data = &data[16..];
-
-                let objc_hunk = ObjContainerHunk::new(name_id, old_def, old_impl, curr_version);
-
-                let hunk = match tag {
-                    RawHunkType::HUNK_CFM_IMPORT_CONTAINER => {
-                        HunkType::CFMImportContainer(objc_hunk)
-                    }
-                    RawHunkType::HUNK_WEAK_IMPORT_CONTAINER => {
-                        HunkType::WeakImportContainer(objc_hunk)
-                    }
-
-                    _ => {
-                        return Err(format!(
-                            "Bad branch selection in {:#?} for tag: {:#?}",
-                            state, tag
-                        ))
-                    }
-                };
-
-                current_hunk = Hunk::new(hunk);
-
-                HunkParseState::CommitHunk
-            }
-            HunkParseState::ParseObjImportHunk(tag) => {
-                let name_id = convert_be_u32(&data[0..4].try_into().unwrap());
-
-                data = &data[4..];
-
-                let obj_hunk = ObjImportHunk::new(name_id);
-
-                let hunk = match tag {
-                    RawHunkType::HUNK_CFM_IMPORT => HunkType::CFMImport(obj_hunk),
-
-                    _ => {
-                        return Err(format!(
-                            "Bad branch selection in {:#?} for tag: {:#?}",
-                            state, tag
-                        ))
-                    }
-                };
-
-                current_hunk = Hunk::new(hunk);
-
-                HunkParseState::CommitHunk
-            }
-            HunkParseState::ParseDataPointerHunk(tag) => {
-                let dp_name: u32 = convert_be_u32(&data[0..4].try_into().unwrap());
-                let d_name: u32 = convert_be_u32(&data[4..8].try_into().unwrap());
-
-                data = &data[8..];
-
-                let dp_hunk = DataPointerHunk::new(dp_name, d_name);
-
-                let hunk = match tag {
-                    RawHunkType::HUNK_LOCAL_DATAPOINTER => HunkType::LocalDataPointer(dp_hunk),
-                    RawHunkType::HUNK_GLOBAL_DATAPOINTER => HunkType::GlobalDataPointer(dp_hunk),
-                    _ => {
-                        return Err(format!(
-                            "Bad branch selection in {:#?} for tag: {:#?}",
-                            state, tag
-                        ))
-                    }
-                };
-
-                current_hunk = Hunk::new(hunk);
-
-                HunkParseState::CommitHunk
-            }
-            HunkParseState::ParseXPointerHunk(tag) => {
-                let xp_name: u32 = convert_be_u32(&data[0..4].try_into().unwrap());
-                let xv_name: u32 = convert_be_u32(&data[4..8].try_into().unwrap());
-
-                data = &data[8..];
-
-                let xp_hunk = XPointerHunk::new(xp_name, xv_name);
-
-                let hunk = match tag {
-                    RawHunkType::HUNK_LOCAL_XPOINTER => HunkType::LocalXPointer(xp_hunk),
-                    RawHunkType::HUNK_GLOBAL_XPOINTER => HunkType::GlobalXPointer(xp_hunk),
-                    _ => {
-                        return Err(format!(
-                            "Bad branch selection in {:#?} for tag: {:#?}",
-                            state, tag
-                        ))
-                    }
-                };
-
-                current_hunk = Hunk::new(hunk);
-
-                HunkParseState::CommitHunk
-            }
-            HunkParseState::ParseXVectorHunk(tag) => {
-                let xv_name: u32 = convert_be_u32(&data[0..4].try_into().unwrap());
-                let f_name: u32 = convert_be_u32(&data[4..8].try_into().unwrap());
-
-                data = &data[8..];
-
-                let xv_hunk = XVectorHunk::new(xv_name, f_name);
-
-                let hunk = match tag {
-                    RawHunkType::HUNK_LOCAL_XVECTOR => HunkType::LocalXVector(xv_hunk),
-                    RawHunkType::HUNK_GLOBAL_XVECTOR => HunkType::GlobalXVector(xv_hunk),
-                    _ => {
-                        return Err(format!(
-                            "Bad branch selection in {:#?} for tag: {:#?}",
-                            state, tag
-                        ))
-                    }
-                };
-
-                current_hunk = Hunk::new(hunk);
-
-                HunkParseState::CommitHunk
-            }
-            HunkParseState::ParseObjSourceHunk(tag) => {
-                let name_id: u32 = convert_be_u32(&data[0..4].try_into().unwrap());
-                let moddate: u32 = convert_be_u32(&data[4..8].try_into().unwrap());
-
-                data = &data[8..];
-
-                let src_hunk = ObjSourceHunk::new(name_id, moddate);
-
-                let hunk = match tag {
-                    RawHunkType::HUNK_SRC_BREAK => HunkType::SrcBreak(src_hunk),
-                    _ => {
-                        return Err(format!(
-                            "Bad branch selection in {:#?} for tag: {:#?}",
-                            state, tag
-                        ))
-                    }
-                };
-
-                current_hunk = Hunk::new(hunk);
-
-                HunkParseState::CommitHunk
-            }
-            HunkParseState::ParseObjSegmentHunk(tag) => {
-                let name_id: u32 = convert_be_u32(&data[0..4].try_into().unwrap());
-
-                data = &data[4..];
-
-                let seg_hunk = ObjSegHunk::new(name_id);
-
-                let hunk = match tag {
-                    RawHunkType::HUNK_SEGMENT => HunkType::Segment(seg_hunk),
-                    _ => {
-                        return Err(format!(
-                            "Bad branch selection in {:#?} for tag: {:#?}",
-                            state, tag
-                        ))
-                    }
-                };
-
-                current_hunk = Hunk::new(hunk);
-
-                HunkParseState::CommitHunk
-            }
-            HunkParseState::ParseObjMethHunk(tag) => {
-                let name_id: u32 = convert_be_u32(&data[0..4].try_into().unwrap());
-                let size: u32 = convert_be_u32(&data[4..8].try_into().unwrap());
-
-                data = &data[8..];
-
-                let meth_hunk = ObjMethHunk::new(name_id, size);
-
-                let hunk = match tag {
-                    RawHunkType::HUNK_METHOD_REF => HunkType::MethodReference(meth_hunk),
-                    _ => {
-                        return Err(format!(
-                            "Bad branch selection in {:#?} for tag: {:#?}",
-                            state, tag
-                        ))
-                    }
-                };
-
-                current_hunk = Hunk::new(hunk);
-
-                HunkParseState::CommitHunk
-            }
-            HunkParseState::ParseObjClassHunk(tag) => {
-                let name_id = convert_be_u32(&data[0..4].try_into().unwrap());
-                let num_methods = convert_be_u16(&data[4..6].try_into().unwrap());
-                let num_pairs = convert_be_u16(&data[6..8].try_into().unwrap());
-
-                data = &data[8..];
-
-                // process pairs
-                let mut pairs: Vec<ObjClassPair> = vec![];
-                for _idx in 0..num_pairs {
-                    let base_id = convert_be_u32(&data[0..4].try_into().unwrap());
-                    let bias = convert_be_u32(&data[4..8].try_into().unwrap());
-
-                    pairs.push(ObjClassPair::new(base_id, bias));
-
-                    data = &data[8..]
-                }
-
-                let class_hunk = ObjClassHunk::new(name_id, num_methods, pairs);
-
-                let hunk = match tag {
-                    RawHunkType::HUNK_METHOD_CLASS_DEF => {
-                        HunkType::MethodClassDefinition(class_hunk)
-                    }
-
-                    _ => {
-                        return Err(format!(
-                            "Bad branch selection in {:#?} for tag: {:#?}",
-                            state, tag
-                        ))
-                    }
-                };
-
-                current_hunk = Hunk::new(hunk);
-
-                HunkParseState::CommitHunk
-            }
-
-            HunkParseState::CommitHunk => {
-                hunks.push(current_hunk.clone());
-
-                if data.len() == 0 {
-                    HunkParseState::End
-                } else {
-                    HunkParseState::Start
-                }
-            }
-            _ => return Err(format!("Bad branch encountered: {:#?}", state)),
-        }
-    }
-
-    Ok(CodeHunks { hunks: hunks })
 }
 
 impl TryFrom<&[u8]> for CodeHunks {
     type Error = String;
 
     fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
-        parse_code(value)
+        let mut data: &[u8] = value;
+
+        let mut hunks: Vec<Hunk> = vec![];
+
+        let mut state: HunkParseState = HunkParseState::default();
+        while state != HunkParseState::End {
+            state = match state {
+                HunkParseState::ParseTag => {
+                    let tag = convert_be_u16(&data[0..2].try_into().unwrap());
+
+                    data = &data[2..];
+
+                    HunkParseState::try_from(tag).unwrap()
+                }
+                HunkParseState::ParseObjSimpleHunk(tag) => {
+                    let hunk = match tag {
+                        RawHunkType::HUNK_START => HunkType::Start(ObjSimpleHunk {}),
+                        RawHunkType::HUNK_END => HunkType::End(ObjSimpleHunk {}),
+
+                        RawHunkType::HUNK_MULTIDEF_GLOBAL => {
+                            HunkType::GlobalMultiDef(ObjSimpleHunk {})
+                        }
+                        RawHunkType::HUNK_OVERLOAD_GLOBAL => {
+                            HunkType::GlobalOverload(ObjSimpleHunk {})
+                        }
+
+                        RawHunkType::HUNK_CFM_EXPORT => HunkType::CFMExport(ObjSimpleHunk {}),
+
+                        _ => {
+                            return Err(format!(
+                                "Bad branch selection in {:#?} for tag: {:#?}",
+                                state, tag
+                            ))
+                        }
+                    };
+
+                    HunkParseState::CommitHunk(Hunk { hunk: hunk })
+                }
+                HunkParseState::ParseReservedHunk(tag) => {
+                    let hunk = match tag {
+                        RawHunkType::HUNK_LIBRARY_BREAK => HunkType::LibraryBreak(ReservedHunk {}),
+
+                        RawHunkType::HUNK_DIFF_8BIT => HunkType::Diff8Bit(ReservedHunk {}),
+                        RawHunkType::HUNK_DIFF_16BIT => HunkType::Diff16Bit(ReservedHunk {}),
+                        RawHunkType::HUNK_DIFF_32BIT => HunkType::Diff32Bit(ReservedHunk {}),
+
+                        RawHunkType::HUNK_DEINIT_CODE => HunkType::DeInitCode(ReservedHunk {}),
+
+                        RawHunkType::HUNK_ILLEGAL1 => HunkType::Illegal1(ReservedHunk {}),
+                        RawHunkType::HUNK_ILLEGAL2 => HunkType::Illegal2(ReservedHunk {}),
+
+                        _ => {
+                            return Err(format!(
+                                "Bad branch selection in {:#?} for tag: {:#?}",
+                                state, tag
+                            ))
+                        }
+                    };
+
+                    return Err(format!("Encountered Reserved Hunk: {:?}", hunk));
+
+                    // Commit nothing cause we found reserved hunks we can't process
+                    // HunkParseState::CommitHunk(Hunk { hunk: hunk })
+                }
+                HunkParseState::ParseObjCodeHunk(tag) => {
+                    let special = match &hunks.last().unwrap().hunk {
+                        HunkType::CFMExport(_) => ObjCodeFlag::CFMExport,
+                        HunkType::GlobalOverload(_) => ObjCodeFlag::GlobalOverload,
+                        HunkType::GlobalMultiDef(_) => ObjCodeFlag::GlobalMultiDef,
+                        _ => ObjCodeFlag::None,
+                    };
+
+                    let name_id = convert_be_u32(&data[0..4].try_into().unwrap());
+                    let size = convert_be_u32(&data[4..8].try_into().unwrap());
+                    let sym_offset = convert_be_u32(&data[8..12].try_into().unwrap());
+                    let sym_decl_offset = convert_be_u32(&data[12..16].try_into().unwrap());
+
+                    data = &data[16..];
+                    let code = &data[0..size as usize];
+                    data = &data[size as usize..];
+
+                    let obj_hunk = ObjCodeHunk {
+                        name_id: name_id,
+                        sym_offset: sym_offset,
+                        sym_decl_offset: sym_decl_offset,
+                        code: code.to_owned(),
+                        special_flag: special,
+                    };
+
+                    let hunk = match tag {
+                        RawHunkType::HUNK_LOCAL_CODE => HunkType::LocalCode(obj_hunk),
+                        RawHunkType::HUNK_GLOBAL_CODE => HunkType::GlobalCode(obj_hunk),
+
+                        _ => {
+                            return Err(format!(
+                                "Bad branch selection in {:#?} for tag: {:#?}",
+                                state, tag
+                            ))
+                        }
+                    };
+
+                    HunkParseState::CommitHunk(Hunk { hunk: hunk })
+                }
+                HunkParseState::ParseInitCodeHunk(tag) => {
+                    let size = convert_be_u32(&data[0..4].try_into().unwrap());
+
+                    data = &data[4..];
+                    let code = &data[0..size as usize];
+                    data = &data[size as usize..];
+
+                    let obj_hunk = ObjInitHunk {
+                        code: code.to_owned(),
+                    };
+
+                    let hunk = match tag {
+                        RawHunkType::HUNK_INIT_CODE => HunkType::InitCode(obj_hunk),
+
+                        _ => {
+                            return Err(format!(
+                                "Bad branch selection in {:#?} for tag: {:#?}",
+                                state, tag
+                            ))
+                        }
+                    };
+
+                    HunkParseState::CommitHunk(Hunk { hunk: hunk })
+                }
+
+                HunkParseState::ParseDataHunk(tag) => {
+                    let name_id = convert_be_u32(&data[0..4].try_into().unwrap());
+                    let size = convert_be_u32(&data[4..8].try_into().unwrap());
+                    let sym_offset = convert_be_u32(&data[8..12].try_into().unwrap());
+                    let sym_decl_offset = convert_be_u32(&data[12..16].try_into().unwrap());
+
+                    data = &data[16..];
+
+                    // Capture initialized data
+                    let code = match tag {
+                        RawHunkType::HUNK_GLOBAL_IDATA
+                        | RawHunkType::HUNK_LOCAL_IDATA
+                        | RawHunkType::HUNK_GLOBAL_FARIDATA
+                        | RawHunkType::HUNK_LOCAL_FARIDATA => {
+                            let c = &data[0..size as usize];
+                            data = &data[size as usize..];
+                            c
+                        }
+                        _ => <&[u8]>::default(),
+                    };
+
+                    let obj_hunk = ObjDataHunk {
+                        name_id: name_id,
+                        sym_offset: sym_offset,
+                        sym_decl_offset: sym_decl_offset,
+                        data: code.to_owned(),
+                    };
+
+                    let hunk = match tag {
+                        RawHunkType::HUNK_GLOBAL_IDATA => HunkType::GlobalInitializedData(obj_hunk),
+                        RawHunkType::HUNK_GLOBAL_UDATA => {
+                            HunkType::GlobalUninitializedData(obj_hunk)
+                        }
+                        RawHunkType::HUNK_LOCAL_IDATA => HunkType::LocalInitializedData(obj_hunk),
+                        RawHunkType::HUNK_LOCAL_UDATA => HunkType::LocalUninitializedData(obj_hunk),
+                        RawHunkType::HUNK_GLOBAL_FARIDATA => {
+                            HunkType::GlobalFarInitializedData(obj_hunk)
+                        }
+                        RawHunkType::HUNK_GLOBAL_FARUDATA => {
+                            HunkType::GlobalFarUninitializedData(obj_hunk)
+                        }
+                        RawHunkType::HUNK_LOCAL_FARIDATA => {
+                            HunkType::LocalFarInitializedData(obj_hunk)
+                        }
+                        RawHunkType::HUNK_LOCAL_FARUDATA => {
+                            HunkType::LocalFarUninitializedData(obj_hunk)
+                        }
+                        _ => {
+                            return Err(format!(
+                                "Bad branch selection in {:#?} for tag: {:#?}",
+                                state, tag
+                            ))
+                        }
+                    };
+
+                    HunkParseState::CommitHunk(Hunk { hunk: hunk })
+                }
+                HunkParseState::ParseAltEntryHunk(tag) => {
+                    let name_id = convert_be_u32(&data[0..4].try_into().unwrap());
+                    let offset = convert_be_u32(&data[4..8].try_into().unwrap());
+
+                    data = &data[8..];
+
+                    let entry_hunk = ObjEntryHunk {
+                        name_id: name_id,
+                        offset: offset,
+                    };
+
+                    let hunk = match tag {
+                        RawHunkType::HUNK_GLOBAL_ENTRY => HunkType::GlobalEntry(entry_hunk),
+                        RawHunkType::HUNK_LOCAL_ENTRY => HunkType::LocalEntry(entry_hunk),
+                        _ => {
+                            return Err(format!(
+                                "Bad branch selection in {:#?} for tag: {:#?}",
+                                state, tag
+                            ))
+                        }
+                    };
+
+                    HunkParseState::CommitHunk(Hunk { hunk: hunk })
+                }
+                HunkParseState::ParseXRefHunk(tag) => {
+                    let name_id = convert_be_u32(&data[0..4].try_into().unwrap());
+                    let num_pairs = convert_be_u16(&data[4..6].try_into().unwrap());
+
+                    data = &data[6..];
+
+                    // process pairs
+                    let mut pairs: Vec<ObjXRefPair> = vec![];
+                    for _idx in 0..num_pairs {
+                        let offset = convert_be_u32(&data[0..4].try_into().unwrap());
+                        let value = convert_be_u32(&data[4..8].try_into().unwrap());
+
+                        pairs.push(ObjXRefPair {
+                            offset: offset,
+                            value: value,
+                        });
+
+                        data = &data[8..]
+                    }
+
+                    let xref_hunk = ObjXRefHunk {
+                        name_id: name_id,
+                        pairs: pairs,
+                    };
+
+                    let hunk = match tag {
+                        RawHunkType::HUNK_XREF_CODEJT16BIT => HunkType::XRefCodeJT16Bit(xref_hunk),
+                        RawHunkType::HUNK_XREF_DATA16BIT => HunkType::XRefData16Bit(xref_hunk),
+                        RawHunkType::HUNK_XREF_CODE16BIT => HunkType::XRefCode16Bit(xref_hunk),
+                        RawHunkType::HUNK_XREF_32BIT => HunkType::XRef32Bit(xref_hunk),
+                        RawHunkType::HUNK_XREF_CODE32BIT => HunkType::XRefCode32Bit(xref_hunk),
+                        RawHunkType::HUNK_XREF_PCREL32BIT => {
+                            HunkType::XRefPCRelative32Bit(xref_hunk)
+                        }
+                        RawHunkType::HUNK_XREF_AMBIGUOUS16BIT => {
+                            HunkType::XRefAmbiguous16Bit(xref_hunk)
+                        }
+
+                        _ => {
+                            return Err(format!(
+                                "Bad branch selection in {:#?} for tag: {:#?}",
+                                state, tag
+                            ))
+                        }
+                    };
+
+                    HunkParseState::CommitHunk(Hunk { hunk: hunk })
+                }
+                HunkParseState::ParseExceptInfoHunk(tag) => {
+                    let size = convert_be_u32(&data[0..4].try_into().unwrap());
+
+                    data = &data[4..];
+                    let code = &data[0..size as usize];
+                    data = &data[size as usize..];
+
+                    let exp_hunk = ObjExceptInfo {
+                        info: code.to_vec(),
+                    };
+
+                    let hunk = match tag {
+                        RawHunkType::HUNK_EXCEPTION_INFO => HunkType::ExceptionInfo(exp_hunk),
+
+                        _ => {
+                            return Err(format!(
+                                "Bad branch selection in {:#?} for tag: {:#?}",
+                                state, tag
+                            ))
+                        }
+                    };
+
+                    HunkParseState::CommitHunk(Hunk { hunk: hunk })
+                }
+                HunkParseState::ParseObjContainerHunk(tag) => {
+                    let name_id = convert_be_u32(&data[0..4].try_into().unwrap());
+                    let old_def_version = convert_be_u32(&data[4..8].try_into().unwrap());
+                    let old_imp_version = convert_be_u32(&data[8..12].try_into().unwrap());
+                    let current_version = convert_be_u32(&data[12..16].try_into().unwrap());
+
+                    data = &data[16..];
+
+                    let objc_hunk = ObjContainerHunk {
+                        name_id: name_id,
+                        old_def_version: old_def_version,
+                        old_imp_version: old_imp_version,
+                        current_version: current_version,
+                    };
+
+                    let hunk = match tag {
+                        RawHunkType::HUNK_CFM_IMPORT_CONTAINER => {
+                            HunkType::CFMImportContainer(objc_hunk)
+                        }
+                        RawHunkType::HUNK_WEAK_IMPORT_CONTAINER => {
+                            HunkType::WeakImportContainer(objc_hunk)
+                        }
+
+                        _ => {
+                            return Err(format!(
+                                "Bad branch selection in {:#?} for tag: {:#?}",
+                                state, tag
+                            ))
+                        }
+                    };
+
+                    HunkParseState::CommitHunk(Hunk { hunk: hunk })
+                }
+                HunkParseState::ParseObjImportHunk(tag) => {
+                    let name_id = convert_be_u32(&data[0..4].try_into().unwrap());
+
+                    data = &data[4..];
+
+                    let obj_hunk = ObjImportHunk { name_id: name_id };
+
+                    let hunk = match tag {
+                        RawHunkType::HUNK_CFM_IMPORT => HunkType::CFMImport(obj_hunk),
+
+                        _ => {
+                            return Err(format!(
+                                "Bad branch selection in {:#?} for tag: {:#?}",
+                                state, tag
+                            ))
+                        }
+                    };
+
+                    HunkParseState::CommitHunk(Hunk { hunk: hunk })
+                }
+                HunkParseState::ParseDataPointerHunk(tag) => {
+                    let name_id: u32 = convert_be_u32(&data[0..4].try_into().unwrap());
+                    let d_name: u32 = convert_be_u32(&data[4..8].try_into().unwrap());
+
+                    data = &data[8..];
+
+                    let dp_hunk = DataPointerHunk {
+                        name_id: name_id,
+                        data_name: d_name,
+                    };
+
+                    let hunk = match tag {
+                        RawHunkType::HUNK_LOCAL_DATAPOINTER => HunkType::LocalDataPointer(dp_hunk),
+                        RawHunkType::HUNK_GLOBAL_DATAPOINTER => {
+                            HunkType::GlobalDataPointer(dp_hunk)
+                        }
+                        _ => {
+                            return Err(format!(
+                                "Bad branch selection in {:#?} for tag: {:#?}",
+                                state, tag
+                            ))
+                        }
+                    };
+
+                    HunkParseState::CommitHunk(Hunk { hunk: hunk })
+                }
+                HunkParseState::ParseXPointerHunk(tag) => {
+                    let xp_name: u32 = convert_be_u32(&data[0..4].try_into().unwrap());
+                    let xv_name: u32 = convert_be_u32(&data[4..8].try_into().unwrap());
+
+                    data = &data[8..];
+
+                    let xp_hunk = XPointerHunk {
+                        name_id: xp_name,
+                        xvector_name: xv_name,
+                    };
+
+                    let hunk = match tag {
+                        RawHunkType::HUNK_LOCAL_XPOINTER => HunkType::LocalXPointer(xp_hunk),
+                        RawHunkType::HUNK_GLOBAL_XPOINTER => HunkType::GlobalXPointer(xp_hunk),
+                        _ => {
+                            return Err(format!(
+                                "Bad branch selection in {:#?} for tag: {:#?}",
+                                state, tag
+                            ))
+                        }
+                    };
+
+                    HunkParseState::CommitHunk(Hunk { hunk: hunk })
+                }
+                HunkParseState::ParseXVectorHunk(tag) => {
+                    let xv_name: u32 = convert_be_u32(&data[0..4].try_into().unwrap());
+                    let f_name: u32 = convert_be_u32(&data[4..8].try_into().unwrap());
+
+                    data = &data[8..];
+
+                    let xv_hunk = XVectorHunk {
+                        name_id: xv_name,
+                        function_name: f_name,
+                    };
+
+                    let hunk = match tag {
+                        RawHunkType::HUNK_LOCAL_XVECTOR => HunkType::LocalXVector(xv_hunk),
+                        RawHunkType::HUNK_GLOBAL_XVECTOR => HunkType::GlobalXVector(xv_hunk),
+                        _ => {
+                            return Err(format!(
+                                "Bad branch selection in {:#?} for tag: {:#?}",
+                                state, tag
+                            ))
+                        }
+                    };
+
+                    HunkParseState::CommitHunk(Hunk { hunk: hunk })
+                }
+                HunkParseState::ParseObjSourceHunk(tag) => {
+                    let name_id: u32 = convert_be_u32(&data[0..4].try_into().unwrap());
+                    let moddate: u32 = convert_be_u32(&data[4..8].try_into().unwrap());
+
+                    data = &data[8..];
+
+                    let src_hunk = ObjSourceHunk {
+                        name_id: name_id,
+                        moddate: moddate,
+                    };
+
+                    let hunk = match tag {
+                        RawHunkType::HUNK_SRC_BREAK => HunkType::SrcBreak(src_hunk),
+                        _ => {
+                            return Err(format!(
+                                "Bad branch selection in {:#?} for tag: {:#?}",
+                                state, tag
+                            ))
+                        }
+                    };
+
+                    HunkParseState::CommitHunk(Hunk { hunk: hunk })
+                }
+                HunkParseState::ParseObjSegmentHunk(tag) => {
+                    let name_id: u32 = convert_be_u32(&data[0..4].try_into().unwrap());
+
+                    data = &data[4..];
+
+                    let seg_hunk = ObjSegHunk { name_id: name_id };
+
+                    let hunk = match tag {
+                        RawHunkType::HUNK_SEGMENT => HunkType::Segment(seg_hunk),
+                        _ => {
+                            return Err(format!(
+                                "Bad branch selection in {:#?} for tag: {:#?}",
+                                state, tag
+                            ))
+                        }
+                    };
+
+                    HunkParseState::CommitHunk(Hunk { hunk: hunk })
+                }
+                HunkParseState::ParseObjMethHunk(tag) => {
+                    let name_id: u32 = convert_be_u32(&data[0..4].try_into().unwrap());
+                    let size: u32 = convert_be_u32(&data[4..8].try_into().unwrap());
+
+                    data = &data[8..];
+
+                    let meth_hunk = ObjMethHunk {
+                        name_id: name_id,
+                        size: size,
+                    };
+
+                    let hunk = match tag {
+                        RawHunkType::HUNK_METHOD_REF => HunkType::MethodReference(meth_hunk),
+                        _ => {
+                            return Err(format!(
+                                "Bad branch selection in {:#?} for tag: {:#?}",
+                                state, tag
+                            ))
+                        }
+                    };
+
+                    HunkParseState::CommitHunk(Hunk { hunk: hunk })
+                }
+                HunkParseState::ParseObjClassHunk(tag) => {
+                    let name_id = convert_be_u32(&data[0..4].try_into().unwrap());
+                    let num_methods = convert_be_u16(&data[4..6].try_into().unwrap());
+                    let num_pairs = convert_be_u16(&data[6..8].try_into().unwrap());
+
+                    data = &data[8..];
+
+                    // process pairs
+                    let mut pairs: Vec<ObjClassPair> = vec![];
+                    for _idx in 0..num_pairs {
+                        let base_id = convert_be_u32(&data[0..4].try_into().unwrap());
+                        let bias = convert_be_u32(&data[4..8].try_into().unwrap());
+
+                        pairs.push(ObjClassPair {
+                            base_id: base_id,
+                            bias: bias,
+                        });
+
+                        data = &data[8..]
+                    }
+
+                    let class_hunk = ObjClassHunk {
+                        name_id: name_id,
+                        methods: num_methods,
+                        pairs: pairs,
+                    };
+
+                    let hunk = match tag {
+                        RawHunkType::HUNK_METHOD_CLASS_DEF => {
+                            HunkType::MethodClassDefinition(class_hunk)
+                        }
+
+                        _ => {
+                            return Err(format!(
+                                "Bad branch selection in {:#?} for tag: {:#?}",
+                                state, tag
+                            ))
+                        }
+                    };
+
+                    HunkParseState::CommitHunk(Hunk { hunk: hunk })
+                }
+
+                HunkParseState::CommitHunk(hunk) => {
+                    hunks.push(hunk);
+
+                    if data.len() == 0 {
+                        HunkParseState::End
+                    } else {
+                        HunkParseState::ParseTag
+                    }
+                }
+                _ => return Err(format!("Bad branch encountered: {:#?}", state)),
+            }
+        }
+
+        Ok(CodeHunks { hunks: hunks })
     }
 }
