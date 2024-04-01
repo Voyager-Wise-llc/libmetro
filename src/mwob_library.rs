@@ -139,7 +139,7 @@ impl TryFrom<&[u8]> for MetroWerksLibrary {
                     util::convert_be_u32(&obj_bytes[16..20].try_into().unwrap()) as usize;
 
                 // The file_name, full_path, and bytes are relative to the LIBRARY Header not the FILE Header
-                let file_name = CStr::from_bytes_until_nul(&obj_bytes[file_name_loc..])
+                let file_name = CStr::from_bytes_until_nul(&value[file_name_loc..])
                     .unwrap()
                     .to_str()
                     .unwrap()
@@ -148,7 +148,7 @@ impl TryFrom<&[u8]> for MetroWerksLibrary {
                 let full_path: String = if full_path_loc == 0 {
                     String::new()
                 } else {
-                    CStr::from_bytes_until_nul(&obj_bytes[full_path_loc as usize..])
+                    CStr::from_bytes_until_nul(&value[full_path_loc as usize..])
                         .unwrap()
                         .to_str()
                         .unwrap()
