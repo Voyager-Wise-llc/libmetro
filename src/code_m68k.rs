@@ -64,22 +64,6 @@ impl RawLength for ObjCodeHunk {
 }
 
 impl ObjCodeHunk {
-    fn new(
-        name_id: u32,
-        sym_offset: u32,
-        sym_decl_offset: u32,
-        flag: ObjCodeFlag,
-        code: &[u8],
-    ) -> Self {
-        Self {
-            name_id: name_id,
-            sym_offset: sym_offset,
-            sym_decl_offset: sym_decl_offset,
-            code: code.to_owned(),
-            special_flag: flag,
-        }
-    }
-
     pub fn has_symtab(&self) -> bool {
         self.sym_offset != 0x80000000
     }
@@ -115,27 +99,18 @@ impl ObjInitHunk {
 #[derive(NameIdFromObject, Debug, Clone)]
 pub struct ObjDataHunk {
     name_id: u32,
-    sym_type_id: u32,
+    sym_offset: u32,
     sym_decl_offset: u32,
     data: Vec<u8>,
 }
 
 impl ObjDataHunk {
-    fn new(name_id: u32, sym_type_id: u32, sym_decl_offset: u32, code: &[u8]) -> Self {
-        Self {
-            name_id: name_id,
-            sym_type_id: sym_type_id,
-            sym_decl_offset: sym_decl_offset,
-            data: code.to_owned(),
-        }
-    }
-
     pub fn data_iter(&self) -> Iter<u8> {
         self.data.iter()
     }
 
-    pub fn sym_type_id(&self) -> u32 {
-        self.sym_type_id
+    pub fn sym_offset(&self) -> u32 {
+        self.sym_offset
     }
 
     pub fn sym_decl_offset(&self) -> u32 {
@@ -150,13 +125,6 @@ pub struct ObjEntryHunk {
 }
 
 impl ObjEntryHunk {
-    fn new(name_id: u32, offset: u32) -> Self {
-        Self {
-            name_id: name_id,
-            offset: offset,
-        }
-    }
-
     pub fn offset(&self) -> u32 {
         self.offset
     }
@@ -169,13 +137,6 @@ pub struct ObjXRefPair {
 }
 
 impl ObjXRefPair {
-    fn new(offset: u32, value: u32) -> Self {
-        Self {
-            offset: offset,
-            value: value,
-        }
-    }
-
     pub fn offset(&self) -> u32 {
         self.offset
     }
@@ -192,13 +153,6 @@ pub struct ObjXRefHunk {
 }
 
 impl ObjXRefHunk {
-    fn new(name_id: u32, pairs: Vec<ObjXRefPair>) -> Self {
-        Self {
-            name_id: name_id,
-            pairs: pairs,
-        }
-    }
-
     pub fn pairs_iter(&self) -> Iter<ObjXRefPair> {
         self.pairs.iter()
     }
@@ -210,12 +164,6 @@ pub struct ObjExceptInfo {
 }
 
 impl ObjExceptInfo {
-    fn new(info: &[u8]) -> Self {
-        Self {
-            info: info.to_vec(),
-        }
-    }
-
     pub fn info(&self) -> &[u8] {
         &self.info
     }
@@ -234,15 +182,6 @@ pub struct ObjContainerHunk {
 }
 
 impl ObjContainerHunk {
-    fn new(name_id: u32, old_def_version: u32, old_imp_version: u32, current_version: u32) -> Self {
-        Self {
-            name_id: name_id,
-            old_def_version: old_def_version,
-            old_imp_version: old_imp_version,
-            current_version: current_version,
-        }
-    }
-
     pub fn old_def_version(&self) -> u32 {
         self.old_def_version
     }
@@ -261,12 +200,6 @@ pub struct ObjImportHunk {
     name_id: u32,
 }
 
-impl ObjImportHunk {
-    fn new(name_id: u32) -> Self {
-        Self { name_id: name_id }
-    }
-}
-
 #[derive(NameIdFromObject, Debug, Clone)]
 pub struct DataPointerHunk {
     name_id: u32,
@@ -274,13 +207,6 @@ pub struct DataPointerHunk {
 }
 
 impl DataPointerHunk {
-    fn new(name_id: u32, data_id: u32) -> Self {
-        Self {
-            name_id: name_id,
-            data_name: data_id,
-        }
-    }
-
     pub fn data_name_id(&self) -> u32 {
         self.data_name
     }
@@ -293,13 +219,6 @@ pub struct XPointerHunk {
 }
 
 impl XPointerHunk {
-    fn new(name_id: u32, xv_id: u32) -> Self {
-        Self {
-            name_id: name_id,
-            xvector_name: xv_id,
-        }
-    }
-
     pub fn xvector_name(&self) -> u32 {
         self.xvector_name
     }
@@ -311,13 +230,6 @@ pub struct XVectorHunk {
     function_name: u32,
 }
 impl XVectorHunk {
-    fn new(xv_name: u32, f_name: u32) -> Self {
-        Self {
-            name_id: xv_name,
-            function_name: f_name,
-        }
-    }
-
     pub fn function_name(&self) -> u32 {
         self.function_name
     }
@@ -329,13 +241,6 @@ pub struct ObjSourceHunk {
     moddate: u32,
 }
 impl ObjSourceHunk {
-    fn new(name_id: u32, moddate: u32) -> Self {
-        Self {
-            name_id: name_id,
-            moddate: moddate,
-        }
-    }
-
     pub fn moddate(&self) -> u32 {
         self.moddate
     }
@@ -345,11 +250,6 @@ impl ObjSourceHunk {
 pub struct ObjSegHunk {
     name_id: u32,
 }
-impl ObjSegHunk {
-    fn new(name_id: u32) -> Self {
-        Self { name_id: name_id }
-    }
-}
 
 #[derive(NameIdFromObject, Debug, Clone)]
 pub struct ObjMethHunk {
@@ -357,13 +257,6 @@ pub struct ObjMethHunk {
     size: u32,
 }
 impl ObjMethHunk {
-    fn new(name_id: u32, size: u32) -> Self {
-        Self {
-            name_id: name_id,
-            size: size,
-        }
-    }
-
     pub fn size(&self) -> u32 {
         self.size
     }
@@ -375,13 +268,6 @@ pub struct ObjClassPair {
     bias: u32,
 }
 impl ObjClassPair {
-    fn new(base_id: u32, bias: u32) -> Self {
-        Self {
-            base_id: base_id,
-            bias: bias,
-        }
-    }
-
     pub fn base_id(&self) -> u32 {
         self.base_id
     }
@@ -399,14 +285,6 @@ pub struct ObjClassHunk {
 }
 
 impl ObjClassHunk {
-    fn new(name_id: u32, num_methods: u16, pairs: Vec<ObjClassPair>) -> Self {
-        Self {
-            name_id: name_id,
-            methods: num_methods,
-            pairs: pairs,
-        }
-    }
-
     pub fn methods(&self) -> u16 {
         self.methods
     }
@@ -844,8 +722,13 @@ fn parse_code(value: &[u8]) -> Result<CodeHunks, String> {
                 let code = &data[0..size as usize];
                 data = &data[size as usize..];
 
-                let obj_hunk =
-                    ObjCodeHunk::new(name_id, sym_offset, sym_decl_offset, special, code);
+                let obj_hunk = ObjCodeHunk {
+                    name_id: name_id,
+                    sym_offset: sym_offset,
+                    sym_decl_offset: sym_decl_offset,
+                    code: code.to_owned(),
+                    special_flag: special,
+                };
 
                 let hunk = match tag {
                     RawHunkType::HUNK_LOCAL_CODE => HunkType::LocalCode(obj_hunk),
@@ -907,7 +790,12 @@ fn parse_code(value: &[u8]) -> Result<CodeHunks, String> {
                     _ => <&[u8]>::default(),
                 };
 
-                let obj_hunk = ObjDataHunk::new(name_id, sym_offset, sym_decl_offset, code);
+                let obj_hunk = ObjDataHunk {
+                    name_id: name_id,
+                    sym_offset: sym_offset,
+                    sym_decl_offset: sym_decl_offset,
+                    data: code.to_owned(),
+                };
 
                 let hunk = match tag {
                     RawHunkType::HUNK_GLOBAL_IDATA => HunkType::GlobalInitializedData(obj_hunk),
@@ -940,7 +828,10 @@ fn parse_code(value: &[u8]) -> Result<CodeHunks, String> {
 
                 data = &data[8..];
 
-                let entry_hunk = ObjEntryHunk::new(name_id, offset);
+                let entry_hunk = ObjEntryHunk {
+                    name_id: name_id,
+                    offset: offset,
+                };
 
                 let hunk = match tag {
                     RawHunkType::HUNK_GLOBAL_ENTRY => HunkType::GlobalEntry(entry_hunk),
@@ -967,12 +858,18 @@ fn parse_code(value: &[u8]) -> Result<CodeHunks, String> {
                     let offset = convert_be_u32(&data[0..4].try_into().unwrap());
                     let value = convert_be_u32(&data[4..8].try_into().unwrap());
 
-                    pairs.push(ObjXRefPair::new(offset, value));
+                    pairs.push(ObjXRefPair {
+                        offset: offset,
+                        value: value,
+                    });
 
                     data = &data[8..]
                 }
 
-                let xref_hunk = ObjXRefHunk::new(name_id, pairs);
+                let xref_hunk = ObjXRefHunk {
+                    name_id: name_id,
+                    pairs: pairs,
+                };
 
                 let hunk = match tag {
                     RawHunkType::HUNK_XREF_CODEJT16BIT => HunkType::XRefCodeJT16Bit(xref_hunk),
@@ -1002,7 +899,9 @@ fn parse_code(value: &[u8]) -> Result<CodeHunks, String> {
                 let code = &data[0..size as usize];
                 data = &data[size as usize..];
 
-                let exp_hunk = ObjExceptInfo::new(code);
+                let exp_hunk = ObjExceptInfo {
+                    info: code.to_vec(),
+                };
 
                 let hunk = match tag {
                     RawHunkType::HUNK_EXCEPTION_INFO => HunkType::ExceptionInfo(exp_hunk),
@@ -1019,13 +918,18 @@ fn parse_code(value: &[u8]) -> Result<CodeHunks, String> {
             }
             HunkParseState::ParseObjContainerHunk(tag) => {
                 let name_id = convert_be_u32(&data[0..4].try_into().unwrap());
-                let old_def = convert_be_u32(&data[4..8].try_into().unwrap());
-                let old_impl = convert_be_u32(&data[8..12].try_into().unwrap());
-                let curr_version = convert_be_u32(&data[12..16].try_into().unwrap());
+                let old_def_version = convert_be_u32(&data[4..8].try_into().unwrap());
+                let old_imp_version = convert_be_u32(&data[8..12].try_into().unwrap());
+                let current_version = convert_be_u32(&data[12..16].try_into().unwrap());
 
                 data = &data[16..];
 
-                let objc_hunk = ObjContainerHunk::new(name_id, old_def, old_impl, curr_version);
+                let objc_hunk = ObjContainerHunk {
+                    name_id: name_id,
+                    old_def_version: old_def_version,
+                    old_imp_version: old_imp_version,
+                    current_version: current_version,
+                };
 
                 let hunk = match tag {
                     RawHunkType::HUNK_CFM_IMPORT_CONTAINER => {
@@ -1050,7 +954,7 @@ fn parse_code(value: &[u8]) -> Result<CodeHunks, String> {
 
                 data = &data[4..];
 
-                let obj_hunk = ObjImportHunk::new(name_id);
+                let obj_hunk = ObjImportHunk { name_id: name_id };
 
                 let hunk = match tag {
                     RawHunkType::HUNK_CFM_IMPORT => HunkType::CFMImport(obj_hunk),
@@ -1066,12 +970,15 @@ fn parse_code(value: &[u8]) -> Result<CodeHunks, String> {
                 HunkParseState::CommitHunk(Hunk { hunk: hunk })
             }
             HunkParseState::ParseDataPointerHunk(tag) => {
-                let dp_name: u32 = convert_be_u32(&data[0..4].try_into().unwrap());
+                let name_id: u32 = convert_be_u32(&data[0..4].try_into().unwrap());
                 let d_name: u32 = convert_be_u32(&data[4..8].try_into().unwrap());
 
                 data = &data[8..];
 
-                let dp_hunk = DataPointerHunk::new(dp_name, d_name);
+                let dp_hunk = DataPointerHunk {
+                    name_id: name_id,
+                    data_name: d_name,
+                };
 
                 let hunk = match tag {
                     RawHunkType::HUNK_LOCAL_DATAPOINTER => HunkType::LocalDataPointer(dp_hunk),
@@ -1092,7 +999,10 @@ fn parse_code(value: &[u8]) -> Result<CodeHunks, String> {
 
                 data = &data[8..];
 
-                let xp_hunk = XPointerHunk::new(xp_name, xv_name);
+                let xp_hunk = XPointerHunk {
+                    name_id: xp_name,
+                    xvector_name: xv_name,
+                };
 
                 let hunk = match tag {
                     RawHunkType::HUNK_LOCAL_XPOINTER => HunkType::LocalXPointer(xp_hunk),
@@ -1113,7 +1023,10 @@ fn parse_code(value: &[u8]) -> Result<CodeHunks, String> {
 
                 data = &data[8..];
 
-                let xv_hunk = XVectorHunk::new(xv_name, f_name);
+                let xv_hunk = XVectorHunk {
+                    name_id: xv_name,
+                    function_name: f_name,
+                };
 
                 let hunk = match tag {
                     RawHunkType::HUNK_LOCAL_XVECTOR => HunkType::LocalXVector(xv_hunk),
@@ -1134,7 +1047,10 @@ fn parse_code(value: &[u8]) -> Result<CodeHunks, String> {
 
                 data = &data[8..];
 
-                let src_hunk = ObjSourceHunk::new(name_id, moddate);
+                let src_hunk = ObjSourceHunk {
+                    name_id: name_id,
+                    moddate: moddate,
+                };
 
                 let hunk = match tag {
                     RawHunkType::HUNK_SRC_BREAK => HunkType::SrcBreak(src_hunk),
@@ -1153,7 +1069,7 @@ fn parse_code(value: &[u8]) -> Result<CodeHunks, String> {
 
                 data = &data[4..];
 
-                let seg_hunk = ObjSegHunk::new(name_id);
+                let seg_hunk = ObjSegHunk { name_id: name_id };
 
                 let hunk = match tag {
                     RawHunkType::HUNK_SEGMENT => HunkType::Segment(seg_hunk),
@@ -1173,7 +1089,10 @@ fn parse_code(value: &[u8]) -> Result<CodeHunks, String> {
 
                 data = &data[8..];
 
-                let meth_hunk = ObjMethHunk::new(name_id, size);
+                let meth_hunk = ObjMethHunk {
+                    name_id: name_id,
+                    size: size,
+                };
 
                 let hunk = match tag {
                     RawHunkType::HUNK_METHOD_REF => HunkType::MethodReference(meth_hunk),
@@ -1200,12 +1119,19 @@ fn parse_code(value: &[u8]) -> Result<CodeHunks, String> {
                     let base_id = convert_be_u32(&data[0..4].try_into().unwrap());
                     let bias = convert_be_u32(&data[4..8].try_into().unwrap());
 
-                    pairs.push(ObjClassPair::new(base_id, bias));
+                    pairs.push(ObjClassPair {
+                        base_id: base_id,
+                        bias: bias,
+                    });
 
                     data = &data[8..]
                 }
 
-                let class_hunk = ObjClassHunk::new(name_id, num_methods, pairs);
+                let class_hunk = ObjClassHunk {
+                    name_id: name_id,
+                    methods: num_methods,
+                    pairs: pairs,
+                };
 
                 let hunk = match tag {
                     RawHunkType::HUNK_METHOD_CLASS_DEF => {
