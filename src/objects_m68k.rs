@@ -1,9 +1,6 @@
-use std::{
-    ffi::{CStr, CString},
-    slice::Iter,
-};
-
 use bitflags::bitflags;
+use core::fmt::Display;
+use std::{ffi::CStr, slice::Iter};
 
 use super::{
     code_m68k::{CodeHunks, Hunk},
@@ -35,24 +32,26 @@ bitflags! {
 #[derive(Debug, Clone)]
 pub struct NameEntry {
     id: u32,
-    name: CString,
+    name: String,
 }
 
 impl Default for NameEntry {
     fn default() -> Self {
         Self {
             id: 0,
-            name: CString::default(),
+            name: String::new(),
         }
     }
 }
 
-impl NameEntry {
-    fn new(id: u32, name: CString) -> Self {
-        Self { id: id, name: name }
+impl Display for NameEntry {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.name)
     }
+}
 
-    pub fn name(&self) -> &CString {
+impl NameEntry {
+    pub fn name(&self) -> &String {
         &self.name
     }
 
@@ -594,36 +593,19 @@ impl ObjectHeader {
 pub struct MetrowerksObject {
     header: ObjectHeader,
     names: Vec<NameEntry>,
-    symtab: SymbolTable,
+    symtab: Option<SymbolTable>,
     hunks: CodeHunks,
 }
 
-impl Default for MetrowerksObject {
-    fn default() -> Self {
-        Self {
-            header: ObjectHeader::default(),
-            names: vec![],
-            symtab: SymbolTable::default(),
-            hunks: CodeHunks::default(),
-        }
+impl TryFrom<&[u8]> for MetrowerksObject {
+    type Error = String;
+
+    fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
+        parse_object(value)
     }
 }
 
 impl MetrowerksObject {
-    fn new(
-        header: ObjectHeader,
-        names: Vec<NameEntry>,
-        symtab: SymbolTable,
-        hunks: CodeHunks,
-    ) -> Self {
-        Self {
-            header: header,
-            names: names,
-            symtab: symtab,
-            hunks: hunks,
-        }
-    }
-
     pub fn names(&self) -> &[NameEntry] {
         &self.names
     }
@@ -632,8 +614,8 @@ impl MetrowerksObject {
         self.names.iter()
     }
 
-    pub fn symbols(&self) -> &SymbolTable {
-        &self.symtab
+    pub fn symbols(&self) -> Option<&SymbolTable> {
+        self.symtab.as_ref()
     }
 
     pub fn hunk_iter(&self) -> Iter<Hunk> {
@@ -678,7 +660,6 @@ enum ObjectParseState {
 
     ProcessNameTable,
     ProcessName,
-    ProcessSymbolTable,
     ProcessObjectData,
 
     End,
@@ -698,8 +679,6 @@ fn parse_object(value: &[u8]) -> Result<MetrowerksObject, String> {
     let mut name_bytes: &[u8] = <&[u8]>::default();
     let mut name_table: Vec<NameEntry> = vec![];
     let mut name_id = 0;
-
-    let mut symbol_table: SymbolTable = SymbolTable::default();
 
     let mut code_objects: CodeHunks = CodeHunks::default();
 
@@ -789,11 +768,16 @@ fn parse_object(value: &[u8]) -> Result<MetrowerksObject, String> {
                 let s =
                     CStr::from_bytes_until_nul(&name_bytes[2..usize::min(258, name_bytes.len())])
                         .unwrap()
+                        .to_str()
+                        .unwrap()
                         .to_owned();
 
                 let end_of_entry = 2 + s.as_bytes().len() + 1;
                 name_bytes = &name_bytes[end_of_entry..];
-                name_table.push(NameEntry::new(name_id, s));
+                name_table.push(NameEntry {
+                    id: name_id,
+                    name: s,
+                });
 
                 remaining_names -= 1;
                 name_id += 1;
@@ -817,18 +801,6 @@ fn parse_object(value: &[u8]) -> Result<MetrowerksObject, String> {
                 let x = util::convert_be_u32(&value[24..28].try_into().unwrap());
 
                 header = header.symtable_size(x);
-
-                ObjectParseState::ProcessSymbolTable
-            }
-            ObjectParseState::ProcessSymbolTable => {
-                let start = header.symtable_start();
-                let end = header.symtable_end();
-
-                if start != 0 {
-                    let symbol_bytes = &value[start..end];
-
-                    symbol_table = SymbolTable::try_from(symbol_bytes).unwrap();
-                }
 
                 ObjectParseState::ObjectHeaderReserved1
             }
@@ -941,18 +913,22 @@ fn parse_object(value: &[u8]) -> Result<MetrowerksObject, String> {
         }
     }
 
-    Ok(MetrowerksObject::new(
-        header,
-        name_table,
-        symbol_table,
-        code_objects,
-    ))
-}
+    // SymTab Processing
+    let sym_tab_start = header.symtable_start();
+    let sym_tab_end = header.symtable_end();
 
-impl TryFrom<&[u8]> for MetrowerksObject {
-    type Error = String;
+    let symtab = if sym_tab_start != 0 {
+        let symbol_bytes = &value[sym_tab_start..sym_tab_end];
 
-    fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
-        parse_object(value)
-    }
+        Option::Some(SymbolTable::try_from(symbol_bytes).unwrap())
+    } else {
+        Option::None
+    };
+
+    Ok(MetrowerksObject {
+        header: header,
+        names: name_table,
+        symtab: symtab,
+        hunks: code_objects,
+    })
 }

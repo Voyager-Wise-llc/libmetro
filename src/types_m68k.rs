@@ -1,5 +1,7 @@
 use std::{ops::Range, slice::Iter};
 
+use crate::util::RawLength;
+
 use super::util::{convert_be_u16, convert_be_u32, NameIdFromObject};
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -142,18 +144,14 @@ impl From<&[u8]> for Pointer {
         let num = convert_be_u16(&value[0..2].try_into().unwrap());
         let typ = convert_be_u32(&value[2..6].try_into().unwrap());
 
-        Pointer::new(num, DataType::from(typ))
+        Pointer {
+            number: num,
+            typ: DataType::from(typ),
+        }
     }
 }
 
 impl Pointer {
-    fn new(num: u16, typ: DataType) -> Self {
-        Self {
-            number: num,
-            typ: typ,
-        }
-    }
-
     pub fn number(&self) -> u16 {
         self.number
     }
@@ -161,7 +159,8 @@ impl Pointer {
     pub fn data_type(&self) -> &DataType {
         &self.typ
     }
-
+}
+impl RawLength for Pointer {
     fn raw_length(&self) -> usize {
         6
     }
@@ -180,19 +179,15 @@ impl From<&[u8]> for Array {
         let esize = convert_be_u32(&value[4..8].try_into().unwrap());
         let typ = convert_be_u32(&value[8..12].try_into().unwrap());
 
-        Array::new(size, esize, DataType::from(typ))
+        Array {
+            size: size,
+            esize: esize,
+            typ: DataType::from(typ),
+        }
     }
 }
 
 impl Array {
-    fn new(size: u32, esize: u32, typ: DataType) -> Self {
-        Self {
-            size: size,
-            esize: esize,
-            typ: typ,
-        }
-    }
-
     pub fn size(&self) -> u32 {
         self.size
     }
@@ -204,7 +199,9 @@ impl Array {
     pub fn data_type(&self) -> &DataType {
         &self.typ
     }
+}
 
+impl RawLength for Array {
     fn raw_length(&self) -> usize {
         12
     }
@@ -216,15 +213,8 @@ pub struct StructMember {
     typ: DataType,
     offset: u32,
 }
-impl StructMember {
-    fn new(name: u32, typ: DataType, offset: u32) -> Self {
-        Self {
-            name_id: name,
-            typ: typ,
-            offset: offset,
-        }
-    }
 
+impl StructMember {
     pub fn data_type(&self) -> &DataType {
         &self.typ
     }
@@ -232,7 +222,9 @@ impl StructMember {
     pub fn offset(&self) -> u32 {
         self.offset
     }
+}
 
+impl RawLength for StructMember {
     fn raw_length(&self) -> usize {
         12
     }
@@ -259,25 +251,25 @@ impl From<&[u8]> for Struct {
             let name = convert_be_u32(&data[0..4].try_into().unwrap());
             let typ = convert_be_u32(&data[4..8].try_into().unwrap());
             let offset = convert_be_u32(&data[8..12].try_into().unwrap());
-            let m = StructMember::new(name, DataType::from(typ), offset);
+            let m = StructMember {
+                name_id: name,
+                typ: DataType::from(typ),
+                offset: offset,
+            };
             members.push(m);
 
             data = &data[12..]
         }
 
-        Struct::new(name, size, members)
-    }
-}
-
-impl Struct {
-    fn new(name: u32, size: u32, members: Vec<StructMember>) -> Struct {
-        Self {
+        Struct {
             name_id: name,
             size: size,
             members: members,
         }
     }
+}
 
+impl Struct {
     pub fn size(&self) -> u32 {
         self.size
     }
@@ -289,7 +281,9 @@ impl Struct {
     pub fn member_iter(&self) -> Iter<StructMember> {
         self.members.iter()
     }
+}
 
+impl RawLength for Struct {
     fn raw_length(&self) -> usize {
         10 + self.members.iter().map(|x| x.raw_length()).sum::<usize>()
     }
@@ -301,17 +295,12 @@ pub struct EnumMember {
     value: u32,
 }
 impl EnumMember {
-    fn new(name: u32, value: u32) -> EnumMember {
-        Self {
-            name_id: name,
-            value: value,
-        }
-    }
-
     pub fn value(&self) -> u32 {
         self.value
     }
+}
 
+impl RawLength for EnumMember {
     fn raw_length(&self) -> usize {
         8
     }
@@ -324,14 +313,6 @@ pub struct Enum {
     members: Vec<EnumMember>,
 }
 impl Enum {
-    fn new(name: u32, typ: BasicDataType, members: Vec<EnumMember>) -> Enum {
-        Self {
-            name_id: name,
-            typ: DataType::BasicDataType(typ),
-            members: members,
-        }
-    }
-
     pub fn members(&self) -> &[EnumMember] {
         &self.members
     }
@@ -343,7 +324,9 @@ impl Enum {
     pub fn data_type(&self) -> &DataType {
         &self.typ
     }
+}
 
+impl RawLength for Enum {
     fn raw_length(&self) -> usize {
         8 + self.members.iter().map(|x| x.raw_length()).sum::<usize>()
     }
@@ -363,7 +346,10 @@ impl TryFrom<&[u8]> for Enum {
         for _idx in 0..num_members {
             let name = convert_be_u32(&data[0..4].try_into().unwrap());
             let value = convert_be_u32(&data[4..8].try_into().unwrap());
-            let m = EnumMember::new(name, value);
+            let m = EnumMember {
+                name_id: name,
+                value: value,
+            };
             members.push(m);
 
             data = &data[8..]
@@ -374,7 +360,11 @@ impl TryFrom<&[u8]> for Enum {
             _ => return Err(format!("Bad Type for Enum, got: {}", baseid)),
         };
 
-        Ok(Enum::new(name, typ, members))
+        Ok(Enum {
+            name_id: name,
+            typ: DataType::BasicDataType(typ),
+            members: members,
+        })
     }
 }
 
@@ -395,21 +385,17 @@ impl From<&[u8]> for PascalArray {
         let eid = convert_be_u32(&value[12..16].try_into().unwrap());
         let name = convert_be_u32(&value[16..20].try_into().unwrap());
 
-        PascalArray::new(name, packed != 0, size, iid, DataType::from(eid))
+        PascalArray {
+            packed: packed != 0,
+            size: size,
+            iid: iid,
+            eid: DataType::from(eid),
+            name_id: name,
+        }
     }
 }
 
 impl PascalArray {
-    fn new(name: u32, packed: bool, size: u32, iid: u32, eid: DataType) -> PascalArray {
-        Self {
-            packed: packed,
-            size: size,
-            iid: iid,
-            eid: eid,
-            name_id: name,
-        }
-    }
-
     pub fn is_packed(&self) -> bool {
         self.packed
     }
@@ -425,7 +411,9 @@ impl PascalArray {
     pub fn eid(&self) -> &DataType {
         &self.eid
     }
+}
 
+impl RawLength for PascalArray {
     fn raw_length(&self) -> usize {
         20
     }
@@ -448,21 +436,17 @@ impl From<&[u8]> for PascalRange {
         let lbound = convert_be_u32(&value[12..16].try_into().unwrap());
         let hbound = convert_be_u32(&value[16..20].try_into().unwrap());
 
-        PascalRange::new(name, DataType::from(base), size, lbound, hbound)
-    }
-}
-
-impl PascalRange {
-    fn new(name: u32, base: DataType, size: u32, lbound: u32, hbound: u32) -> Self {
         Self {
             name_id: name,
-            typ: base,
+            typ: DataType::from(base),
             size: size,
             lower: lbound,
             upper: hbound,
         }
     }
+}
 
+impl PascalRange {
     pub fn lower(&self) -> u32 {
         self.lower
     }
@@ -478,7 +462,9 @@ impl PascalRange {
     pub fn data_type(&self) -> &DataType {
         &self.typ
     }
+}
 
+impl RawLength for PascalRange {
     fn raw_length(&self) -> usize {
         20
     }
@@ -503,19 +489,15 @@ impl From<&[u8]> for PascalSet {
         let base = convert_be_u32(&value[4..8].try_into().unwrap());
         let size = convert_be_u32(&value[8..12].try_into().unwrap());
 
-        PascalSet::new(name, DataType::from(base), size)
+        PascalSet {
+            name_id: name,
+            base: DataType::from(base),
+            size: size,
+        }
     }
 }
 
 impl PascalSet {
-    fn new(name: u32, base: DataType, size: u32) -> Self {
-        Self {
-            name_id: name,
-            base: base,
-            size: size,
-        }
-    }
-
     pub fn base(&self) -> &DataType {
         &self.base
     }
@@ -523,7 +505,9 @@ impl PascalSet {
     pub fn size(&self) -> usize {
         self.size as usize
     }
+}
 
+impl RawLength for PascalSet {
     fn raw_length(&self) -> usize {
         12
     }
@@ -551,18 +535,14 @@ impl From<&[u8]> for PascalEnum {
             data = &data[4..]
         }
 
-        PascalEnum::new(name, members)
-    }
-}
-
-impl PascalEnum {
-    fn new(name: u32, members: Vec<u32>) -> PascalEnum {
-        Self {
+        PascalEnum {
             name_id: name,
             members: members,
         }
     }
+}
 
+impl PascalEnum {
     pub fn members_iter(&self) -> Iter<u32> {
         self.members.iter()
     }
@@ -570,7 +550,9 @@ impl PascalEnum {
     pub fn members(&self) -> &[u32] {
         &self.members
     }
+}
 
+impl RawLength for PascalEnum {
     fn raw_length(&self) -> usize {
         8 + (self.members.len() * 4)
     }
@@ -587,22 +569,20 @@ impl From<&[u8]> for PascalString {
         let size = convert_be_u32(&value[0..4].try_into().unwrap());
         let name = convert_be_u32(&value[4..8].try_into().unwrap());
 
-        PascalString::new(name, size)
-    }
-}
-
-impl PascalString {
-    fn new(name: u32, size: u32) -> PascalString {
-        Self {
+        PascalString {
             name_id: name,
             size: size,
         }
     }
+}
 
+impl PascalString {
     pub fn size(&self) -> u32 {
         self.size
     }
+}
 
+impl RawLength for PascalString {
     fn raw_length(&self) -> usize {
         8
     }
@@ -622,6 +602,23 @@ pub enum OtherDataType {
     TypePascalString(PascalString),
 }
 
+impl RawLength for OtherDataType {
+    fn raw_length(&self) -> usize {
+        match self {
+            OtherDataType::Undefined => 0,
+            OtherDataType::TypePointer(p) => p.raw_length(),
+            OtherDataType::TypeArray(a) => a.raw_length(),
+            OtherDataType::TypeStruct(s) => s.raw_length(),
+            OtherDataType::TypeEnum(e) => e.raw_length(),
+            OtherDataType::TypePascalArray(pa) => pa.raw_length(),
+            OtherDataType::TypePascalRange(pr) => pr.raw_length(),
+            OtherDataType::TypePascalSet(ps) => ps.raw_length(),
+            OtherDataType::TypePascalEnum(pe) => pe.raw_length(),
+            OtherDataType::TypePascalString(ps) => ps.raw_length(),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct TypeDefinition {
     typ: OtherDataType,
@@ -634,6 +631,12 @@ impl Default for TypeDefinition {
             typ: OtherDataType::Undefined,
             id: 0,
         }
+    }
+}
+
+impl RawLength for TypeDefinition {
+    fn raw_length(&self) -> usize {
+        2 + self.typ.raw_length()
     }
 }
 
@@ -691,12 +694,12 @@ impl TryFrom<u16> for TypeParseState {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone)]
 enum TypeParseState {
     Start,
 
     ParseTag,
-    ParseTypeID,
+    ParseTypeID(u16),
 
     ParsePointer,
     ParseArray,
@@ -707,7 +710,7 @@ enum TypeParseState {
     ParseSet,
     ParsePascalEnum,
     ParsePascalString,
-    CommitType,
+    CommitType(OtherDataType),
 
     End,
 }
@@ -718,28 +721,37 @@ impl Default for TypeParseState {
     }
 }
 
+impl PartialEq for TypeParseState {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::CommitType(_), Self::CommitType(_)) => true,
+            _ => core::mem::discriminant(self) == core::mem::discriminant(other),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
-pub struct TypeTable {
+pub(crate) struct TypeTable {
     table: Vec<TypeDefinition>,
 }
 
-impl Default for TypeTable {
-    fn default() -> Self {
-        Self { table: vec![] }
+impl RawLength for TypeTable {
+    fn raw_length(&self) -> usize {
+        (2 * self.table.len()) + self.table.iter().map(|x| x.raw_length()).sum::<usize>()
+    }
+}
+
+impl TryFrom<(&[u8], u32)> for TypeTable {
+    type Error = String;
+
+    fn try_from(value: (&[u8], u32)) -> Result<Self, Self::Error> {
+        parse_types(value.0, value.1)
     }
 }
 
 impl TypeTable {
     pub fn types(&self) -> &[TypeDefinition] {
         &self.table
-    }
-
-    pub fn type_iter(&self) -> Iter<TypeDefinition> {
-        self.table.iter()
-    }
-
-    pub fn length(&self) -> usize {
-        self.table.len()
     }
 }
 
@@ -750,9 +762,6 @@ fn parse_types(value: &[u8], num_types: u32) -> Result<TypeTable, String> {
     let mut remaining_types = num_types;
 
     let mut current_id = 0;
-    let mut current_type: OtherDataType = OtherDataType::Undefined;
-
-    let mut curr_branch: TypeParseState = TypeParseState::End;
 
     let mut state: TypeParseState = TypeParseState::default();
     while state != TypeParseState::End {
@@ -766,97 +775,55 @@ fn parse_types(value: &[u8], num_types: u32) -> Result<TypeTable, String> {
             }
             TypeParseState::ParseTag => {
                 let tag_u16 = convert_be_u16(&data[0..2].try_into().unwrap());
-                curr_branch = TypeParseState::try_from(tag_u16).unwrap();
-
                 data = &data[2..];
-                TypeParseState::ParseTypeID
+
+                TypeParseState::ParseTypeID(tag_u16)
             }
-            TypeParseState::ParseTypeID => {
+            TypeParseState::ParseTypeID(tag) => {
                 current_id = convert_be_u32(&data[0..4].try_into().unwrap());
 
                 data = &data[4..];
-                curr_branch // Jump to the proper processing state
+                TypeParseState::try_from(tag).unwrap() // Jump to the proper processing state
             }
 
             TypeParseState::ParsePointer => {
-                let p = Pointer::from(data);
-                data = &data[p.raw_length()..];
-
-                current_type = OtherDataType::TypePointer(p);
-
-                TypeParseState::CommitType
+                TypeParseState::CommitType(OtherDataType::TypePointer(Pointer::from(data)))
             }
             TypeParseState::ParseArray => {
-                let a = Array::from(data);
-                data = &data[a.raw_length()..];
-
-                current_type = OtherDataType::TypeArray(a);
-
-                TypeParseState::CommitType
+                TypeParseState::CommitType(OtherDataType::TypeArray(Array::from(data)))
             }
             TypeParseState::ParseStruct => {
-                let s = Struct::from(data);
-                data = &data[s.raw_length()..];
-
-                current_type = OtherDataType::TypeStruct(s);
-
-                TypeParseState::CommitType
+                TypeParseState::CommitType(OtherDataType::TypeStruct(Struct::from(data)))
             }
             TypeParseState::ParseEnum => {
                 let e = match Enum::try_from(data) {
                     Ok(x) => x,
                     Err(x) => return Err(x),
                 };
-                data = &data[e.raw_length()..];
 
-                current_type = OtherDataType::TypeEnum(e);
-
-                TypeParseState::CommitType
+                TypeParseState::CommitType(OtherDataType::TypeEnum(e))
             }
             TypeParseState::ParsePascalArray => {
-                let pa = PascalArray::from(data);
-                data = &data[pa.raw_length()..];
-
-                current_type = OtherDataType::TypePascalArray(pa);
-
-                TypeParseState::CommitType
+                TypeParseState::CommitType(OtherDataType::TypePascalArray(PascalArray::from(data)))
             }
             TypeParseState::ParseRange => {
-                let pr = PascalRange::from(data);
-                data = &data[pr.raw_length()..];
-
-                current_type = OtherDataType::TypePascalRange(pr);
-
-                TypeParseState::CommitType
+                TypeParseState::CommitType(OtherDataType::TypePascalRange(PascalRange::from(data)))
             }
             TypeParseState::ParseSet => {
-                let ps = PascalSet::from(data);
-                data = &data[ps.raw_length()..];
-
-                current_type = OtherDataType::TypePascalSet(ps);
-
-                TypeParseState::CommitType
+                TypeParseState::CommitType(OtherDataType::TypePascalSet(PascalSet::from(data)))
             }
             TypeParseState::ParsePascalEnum => {
-                let pe = PascalEnum::from(data);
-                data = &data[pe.raw_length()..];
-
-                current_type = OtherDataType::TypePascalEnum(pe);
-
-                TypeParseState::CommitType
+                TypeParseState::CommitType(OtherDataType::TypePascalEnum(PascalEnum::from(data)))
             }
-            TypeParseState::ParsePascalString => {
-                let ps = PascalString::from(data);
-                data = &data[ps.raw_length()..];
+            TypeParseState::ParsePascalString => TypeParseState::CommitType(
+                OtherDataType::TypePascalString(PascalString::from(data)),
+            ),
 
-                current_type = OtherDataType::TypePascalString(ps);
+            TypeParseState::CommitType(typ) => {
+                data = &data[typ.raw_length()..];
 
-                TypeParseState::CommitType
-            }
-
-            TypeParseState::CommitType => {
                 types.push(TypeDefinition {
-                    typ: current_type.clone(),
+                    typ: typ,
                     id: current_id,
                 });
                 remaining_types -= 1;
@@ -871,12 +838,4 @@ fn parse_types(value: &[u8], num_types: u32) -> Result<TypeTable, String> {
         }
     }
     Ok(TypeTable { table: types })
-}
-
-impl TryFrom<(&[u8], u32)> for TypeTable {
-    type Error = String;
-
-    fn try_from(value: (&[u8], u32)) -> Result<Self, Self::Error> {
-        parse_types(value.0, value.1)
-    }
 }

@@ -1,6 +1,10 @@
+use std::fmt::Debug;
 use std::slice::Iter;
 
-use super::types_m68k::{DataType, TypeDefinition, TypeTable};
+use crate::types_m68k::TypeTable;
+use crate::util::{convert_be_i32, RawLength};
+
+use super::types_m68k::{DataType, TypeDefinition};
 
 use super::util::{convert_be_u16, convert_be_u32, NameIdFromObject};
 
@@ -9,7 +13,7 @@ pub enum SymTableMagicWord {
     SymTableMagicWord = 0x53594D48,
 }
 
-pub struct SymbolTableHeader {
+struct SymbolTableHeader {
     type_offset: u32,
     num_types: u32,
     unnamed: u32,
@@ -73,7 +77,7 @@ impl SymbolTableHeader {
 }
 
 #[derive(PartialEq)]
-enum ParseState {
+enum SymTabParseState {
     SymTabHeaderStart,
     SymTabHeaderMagicWord,
     SymTabHeaderTypeOffset,
@@ -81,95 +85,101 @@ enum ParseState {
     SymTabHeaderUnnamed,
     SymTabHeaderReserved,
 
-    ProcessTypeTableStart,
-
     ProcessRoutineTableStart,
-    ProcessRoutineStart,
-    ProcessRoutineProcFunc,
-    ProcessRoutineStatementList,
-    ProcessRoutineLocalVarsStart,
-    ProcessRoutineLocalVars,
+    ProcessRoutines,
 
     End,
 }
 
-impl Default for ParseState {
+impl Default for SymTabParseState {
     fn default() -> Self {
-        ParseState::SymTabHeaderStart
+        SymTabParseState::SymTabHeaderStart
     }
 }
 
 #[derive(Debug, Clone)]
 pub struct SymbolTable {
     routines: Vec<Routine>,
-    types: TypeTable,
+    types: Vec<TypeDefinition>,
 }
 
-impl Default for SymbolTable {
-    fn default() -> Self {
-        Self {
-            routines: vec![],
-            types: TypeTable::default(),
-        }
+impl TryFrom<&[u8]> for SymbolTable {
+    type Error = String;
+
+    fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
+        parse_symtab(value)
+    }
+}
+
+impl RawLength for SymbolTable {
+    fn raw_length(&self) -> usize {
+        32 + self.routines.iter().map(|x| x.raw_length()).sum::<usize>()
+            + self.types().iter().map(|x| x.raw_length()).sum::<usize>()
     }
 }
 
 impl SymbolTable {
-    fn new(routines: Vec<Routine>, type_table: TypeTable) -> Self {
-        Self {
-            routines: routines,
-            types: type_table,
-        }
-    }
-
     pub fn routines(&self) -> &[Routine] {
         &self.routines
     }
 
-    pub fn types(&self) -> &TypeTable {
+    pub fn routine_iter(&self) -> Iter<Routine> {
+        self.routines.iter()
+    }
+
+    pub fn types(&self) -> &[TypeDefinition] {
         &self.types
     }
 
     pub fn type_iter(&self) -> Iter<TypeDefinition> {
-        self.types.type_iter()
+        self.types.iter()
+    }
+
+    pub fn routine_at_offset(&self, offset: usize) -> &Routine {
+        let mut i = 0;
+        let mut off = offset;
+
+        // Remove the Symtab header
+        off -= 32;
+
+        let mut iter = self.routines.iter();
+        while off > 0 {
+            let r = iter.next().unwrap();
+            off -= r.raw_length();
+            i += 1;
+        }
+
+        &self.routines[i]
     }
 }
 
 #[derive(Debug, Clone)]
 pub struct StatementLocation {
-    offset: u32,
+    offset: i32,
     source_offset: u32,
 }
 
 impl StatementLocation {
     pub fn is_end_of_list(&self) -> bool {
-        self.offset == 0xFFFFFFFF
+        self.offset == -1
     }
 
-    pub fn obj_offset(&self) -> u32 {
+    pub fn obj_offset(&self) -> i32 {
         self.offset
     }
 
     pub fn sourcecode_offset(&self) -> u32 {
         self.source_offset
     }
-}
 
-impl From<[u8; 8]> for StatementLocation {
-    fn from(value: [u8; 8]) -> Self {
-        let offset = convert_be_u32(&value[0..4].try_into().unwrap());
-        let source_offset = convert_be_u32(&value[4..8].try_into().unwrap());
-
-        Self {
-            offset: offset,
-            source_offset: source_offset,
-        }
+    fn raw_length(&self) -> usize {
+        8
     }
 }
 
 impl From<&[u8]> for StatementLocation {
     fn from(value: &[u8]) -> Self {
-        let offset = convert_be_u32(&value[0..4].try_into().unwrap());
+        let offset = convert_be_i32(&value[0..4].try_into().unwrap());
         let source_offset = convert_be_u32(&value[4..8].try_into().unwrap());
 
         Self {
@@ -271,6 +281,10 @@ impl LocalVar {
     pub fn wher(&self) -> u32 {
         self.wher
     }
+
+    fn raw_length(&self) -> usize {
+        14
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -297,21 +311,60 @@ impl Default for Routine {
     }
 }
 
-impl Routine {
-    pub fn new(typ: RoutineType) -> Self {
-        Self {
-            typ: typ,
-            statement_locations: vec![],
-            local_vars: vec![],
+impl TryFrom<&[u8]> for Routine {
+    type Error = String;
+
+    fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
+        let mut data = value;
+        let mut statement_locs: Vec<StatementLocation> = vec![];
+        let mut local_vars: Vec<LocalVar> = vec![];
+
+        // Get routine type
+        let routine_type = convert_be_u16(&data[0..2].try_into().unwrap());
+        let typ = match routine_type {
+            x if x == RoutineType::Procedure as u16 => RoutineType::Procedure,
+            x if x == RoutineType::Function as u16 => RoutineType::Function,
+            _ => {
+                return Err(format!("Bad Routine Type: got {}", routine_type));
+            }
+        };
+
+        data = &data[2..];
+        let mut eol = false;
+        while !eol {
+            let statement_loc = StatementLocation::from(data);
+            data = &data[statement_loc.raw_length()..];
+            eol = statement_loc.is_end_of_list();
+            statement_locs.push(statement_loc);
         }
+
+        let mut remaining_local_vars = convert_be_u16(&data[0..2].try_into().unwrap());
+        data = &data[2..];
+
+        while remaining_local_vars != 0 {
+            let local = LocalVar::from(data);
+            data = &data[local.raw_length()..];
+
+            local_vars.push(local);
+
+            remaining_local_vars -= 1;
+        }
+
+        Ok(Routine {
+            typ: typ,
+            statement_locations: statement_locs,
+            local_vars: local_vars,
+        })
+    }
+}
+
+impl Routine {
+    pub fn statement_locations(&self) -> &[StatementLocation] {
+        self.statement_locations.as_slice()
     }
 
-    pub fn add_statement_location(&mut self, statement: StatementLocation) {
-        self.statement_locations.push(statement);
-    }
-
-    pub fn add_local_var(&mut self, local_var: LocalVar) {
-        self.local_vars.push(local_var);
+    pub fn local_vars(&self) -> &[LocalVar] {
+        self.local_vars.as_slice()
     }
 
     pub fn is_procedure(&self) -> bool {
@@ -320,6 +373,19 @@ impl Routine {
 
     pub fn is_function(&self) -> bool {
         self.typ == RoutineType::Function
+    }
+
+    fn raw_length(&self) -> usize {
+        4 + self
+            .statement_locations
+            .iter()
+            .map(|x| x.raw_length())
+            .sum::<usize>()
+            + self
+                .local_vars
+                .iter()
+                .map(|x| x.raw_length())
+                .sum::<usize>()
     }
 }
 
@@ -333,16 +399,12 @@ fn parse_symtab(value: &[u8]) -> Result<SymbolTable, String> {
 
     let mut routines: Vec<Routine> = vec![];
     let mut routine_bytes: &[u8] = <&[u8]>::default();
-    let mut current_routine = Routine::default();
-    let mut remaining_local_vars = 0;
 
-    let mut type_table: TypeTable = TypeTable::default();
-
-    let mut state: ParseState = ParseState::default();
-    while state != ParseState::End {
+    let mut state: SymTabParseState = SymTabParseState::default();
+    while state != SymTabParseState::End {
         state = match state {
-            ParseState::SymTabHeaderStart => ParseState::SymTabHeaderMagicWord,
-            ParseState::SymTabHeaderMagicWord => {
+            SymTabParseState::SymTabHeaderStart => SymTabParseState::SymTabHeaderMagicWord,
+            SymTabParseState::SymTabHeaderMagicWord => {
                 let x = convert_be_u32(&value[0..4].try_into().unwrap());
 
                 if x != SymTableMagicWord::SymTableMagicWord as u32 {
@@ -353,140 +415,64 @@ fn parse_symtab(value: &[u8]) -> Result<SymbolTable, String> {
                     ));
                 }
 
-                ParseState::SymTabHeaderTypeOffset
+                SymTabParseState::SymTabHeaderTypeOffset
             }
 
             /* Type Table */
-            ParseState::SymTabHeaderTypeOffset => {
+            SymTabParseState::SymTabHeaderTypeOffset => {
                 let x = convert_be_u32(&value[4..8].try_into().unwrap());
 
                 header = header.type_offset(x);
 
                 if x != 0 {
-                    ParseState::SymTabHeaderTypes
+                    SymTabParseState::SymTabHeaderTypes
                 } else {
                     // No Types defined, skip processing types
-                    ParseState::SymTabHeaderReserved
+                    SymTabParseState::SymTabHeaderReserved
                 }
             }
-            ParseState::SymTabHeaderTypes => {
+            SymTabParseState::SymTabHeaderTypes => {
                 let x = convert_be_u32(&value[8..12].try_into().unwrap());
 
                 header = header.num_types(x);
 
-                ParseState::SymTabHeaderUnnamed
+                SymTabParseState::SymTabHeaderUnnamed
             }
-            ParseState::SymTabHeaderUnnamed => {
+            SymTabParseState::SymTabHeaderUnnamed => {
                 let x = convert_be_u32(&value[12..16].try_into().unwrap());
 
                 header = header.unnamed(x);
 
-                if header.type_table_start() != 0 {
-                    ParseState::ProcessTypeTableStart
-                } else {
-                    // No Types defined, skip processing types
-                    ParseState::SymTabHeaderReserved
-                }
-            }
-
-            /* Type Table: Process */
-            ParseState::ProcessTypeTableStart => {
-                let start = header.type_table_start();
-                let tbl = &value[start..];
-                let num_types = header.type_table_count();
-
-                type_table = TypeTable::try_from((tbl, num_types)).unwrap();
-
-                ParseState::SymTabHeaderReserved
+                SymTabParseState::SymTabHeaderReserved
             }
 
             /* MetroWerks reserved  */
-            ParseState::SymTabHeaderReserved => {
+            SymTabParseState::SymTabHeaderReserved => {
                 let x = convert_reserved(&value[16..32].try_into().unwrap());
 
                 header = header.reserved(x);
 
-                ParseState::ProcessRoutineTableStart
+                SymTabParseState::ProcessRoutineTableStart
             }
 
             /* Routine Table */
-            ParseState::ProcessRoutineTableStart => {
+            SymTabParseState::ProcessRoutineTableStart => {
                 if value.len() > 32 {
                     routine_bytes = &value[32..];
-                    ParseState::ProcessRoutineStart
+                    SymTabParseState::ProcessRoutines
                 } else {
-                    ParseState::End
+                    SymTabParseState::End
                 }
             }
-            ParseState::ProcessRoutineStart => {
-                current_routine = Routine::default();
+            SymTabParseState::ProcessRoutines => {
+                while routine_bytes.len() != 0 {
+                    let r: Routine = Routine::try_from(routine_bytes).unwrap();
+                    routine_bytes = &routine_bytes[r.raw_length()..];
 
-                if routine_bytes.len() != 0 {
-                    ParseState::ProcessRoutineProcFunc
-                } else {
-                    ParseState::End
+                    routines.push(r);
                 }
-            }
-            ParseState::ProcessRoutineProcFunc => {
-                let x = convert_be_u16(&routine_bytes[0..2].try_into().unwrap());
-                current_routine = Routine::new(match x {
-                    // TODO: Move this
-                    x if x == RoutineType::Procedure as u16 => RoutineType::Procedure,
-                    x if x == RoutineType::Function as u16 => RoutineType::Function,
-                    _ => {
-                        return Err(format!("Bad Routine Type: got {}", x));
-                    }
-                });
 
-                routine_bytes = &routine_bytes[2..];
-
-                ParseState::ProcessRoutineStatementList
-            }
-
-            /* Routine Table: Statement List */
-            ParseState::ProcessRoutineStatementList => {
-                let x = &routine_bytes[0..8];
-
-                let statement_loc = StatementLocation::from(x);
-
-                let eol = statement_loc.is_end_of_list();
-                current_routine.add_statement_location(statement_loc);
-
-                routine_bytes = &routine_bytes[8..];
-
-                if eol {
-                    ParseState::ProcessRoutineLocalVarsStart
-                } else {
-                    ParseState::ProcessRoutineStatementList
-                }
-            }
-
-            /* Routine Table: Local Vars */
-            ParseState::ProcessRoutineLocalVarsStart => {
-                remaining_local_vars = convert_be_u16(&routine_bytes[0..2].try_into().unwrap());
-
-                if remaining_local_vars != 0 {
-                    routine_bytes = &routine_bytes[2..];
-                    ParseState::ProcessRoutineLocalVars
-                } else {
-                    ParseState::ProcessRoutineStart
-                }
-            }
-            ParseState::ProcessRoutineLocalVars => {
-                let x = &routine_bytes[0..14];
-
-                let local = LocalVar::from(x);
-                current_routine.add_local_var(local);
-
-                routine_bytes = &routine_bytes[14..];
-
-                remaining_local_vars -= 1;
-                if remaining_local_vars != 0 {
-                    ParseState::ProcessRoutineLocalVars
-                } else {
-                    routines.push(current_routine.clone());
-                    ParseState::ProcessRoutineStart
-                }
+                SymTabParseState::End
             }
             _ => {
                 todo!()
@@ -494,13 +480,22 @@ fn parse_symtab(value: &[u8]) -> Result<SymbolTable, String> {
         }
     }
 
-    Ok(SymbolTable::new(routines, type_table))
-}
+    let tt_start = header.type_table_start();
 
-impl TryFrom<&[u8]> for SymbolTable {
-    type Error = String;
+    let type_table = if tt_start != 0 {
+        let tbl = &value[tt_start..];
+        let num_types = header.type_table_count();
 
-    fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
-        parse_symtab(value)
-    }
+        TypeTable::try_from((tbl, num_types))
+            .unwrap()
+            .types()
+            .to_owned()
+    } else {
+        vec![]
+    };
+
+    Ok(SymbolTable {
+        routines: routines,
+        types: type_table,
+    })
 }

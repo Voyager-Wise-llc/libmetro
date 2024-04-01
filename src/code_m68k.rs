@@ -1,5 +1,7 @@
 use std::slice::Iter;
 
+use crate::util::RawLength;
+
 use super::util::{convert_be_u16, convert_be_u32, NameIdFromObject};
 
 #[derive(Debug, Clone)]
@@ -17,6 +19,12 @@ pub struct ObjSimpleHunk {}
 impl Default for ObjSimpleHunk {
     fn default() -> Self {
         Self {}
+    }
+}
+
+impl RawLength for ObjSimpleHunk {
+    fn raw_length(&self) -> usize {
+        0
     }
 }
 
@@ -46,6 +54,12 @@ impl Default for ObjCodeHunk {
             special_flag: ObjCodeFlag::None,
             code: vec![],
         }
+    }
+}
+
+impl RawLength for ObjCodeHunk {
+    fn raw_length(&self) -> usize {
+        12 + self.code.len()
     }
 }
 

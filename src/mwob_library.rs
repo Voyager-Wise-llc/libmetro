@@ -1,3 +1,5 @@
+use crate::objects_m68k::MetrowerksObject;
+
 use super::util;
 use std::ffi::CStr;
 use std::slice::Iter;
@@ -54,36 +56,12 @@ pub struct FileObject {
     moddate: u32,
     file_name: String,
     full_path: String,
-    data: Vec<u8>,
-}
-
-impl Default for FileObject {
-    fn default() -> Self {
-        Self {
-            moddate: 0,
-            file_name: String::new(),
-            full_path: String::new(),
-            data: vec![],
-        }
-    }
+    obj: MetrowerksObject,
 }
 
 impl FileObject {
-    fn new(moddate: u32, file_name: String, full_path: String, data: &[u8]) -> Self {
-        Self {
-            moddate: moddate,
-            file_name: file_name,
-            full_path: full_path,
-            data: data.to_vec(),
-        }
-    }
-
-    pub fn as_bytes(&self) -> &[u8] {
-        self.data.as_slice()
-    }
-
-    pub fn length(&self) -> usize {
-        self.data.len()
+    pub fn object(&self) -> &MetrowerksObject {
+        &self.obj
     }
 
     pub fn filename(&self) -> &str {
@@ -108,20 +86,6 @@ pub struct MetroWerksLibrary {
 }
 
 impl MetroWerksLibrary {
-    fn new(
-        proc: LibraryProcessor,
-        flags: LibraryFlags,
-        version: u32,
-        files: Vec<FileObject>,
-    ) -> Self {
-        Self {
-            proc: proc,
-            flags: flags,
-            version: version,
-            files: files,
-        }
-    }
-
     #[inline(always)]
     pub fn proc(&self) -> LibraryProcessor {
         self.proc
@@ -168,7 +132,6 @@ impl Default for LibraryParseState {
 pub fn parse_library(value: &[u8]) -> Result<MetroWerksLibrary, String> {
     let mut data: &[u8] = value;
     let mut files: Vec<FileObject> = Vec::new();
-    let mut current_file = FileObject::default();
     let mut remaining_files = 0;
 
     let mut proc = LibraryProcessor::default();
@@ -242,12 +205,16 @@ pub fn parse_library(value: &[u8]) -> Result<MetroWerksLibrary, String> {
                 let bytes = &value[data_start..(data_start + data_size)];
                 data = &data[20..];
 
-                current_file = FileObject::new(file_moddate, file_name, full_path, bytes);
+                files.push(FileObject {
+                    moddate: file_moddate,
+                    file_name: file_name,
+                    full_path: full_path,
+                    obj: MetrowerksObject::try_from(bytes)?,
+                });
 
                 LibraryParseState::CommitFile
             }
             LibraryParseState::CommitFile => {
-                files.push(current_file.clone());
                 remaining_files -= 1;
 
                 if remaining_files == 0 {
@@ -260,7 +227,12 @@ pub fn parse_library(value: &[u8]) -> Result<MetroWerksLibrary, String> {
         }
     }
 
-    Ok(MetroWerksLibrary::new(proc, flags, version, files))
+    Ok(MetroWerksLibrary {
+        proc: proc,
+        flags: flags,
+        version: version,
+        files: files,
+    })
 }
 
 impl TryFrom<&[u8]> for MetroWerksLibrary {
@@ -273,8 +245,6 @@ impl TryFrom<&[u8]> for MetroWerksLibrary {
 
 #[cfg(test)]
 mod tests {
-    use crate::objects_m68k::MetrowerksObject;
-
     use super::*;
     use std::fs::File;
     use std::io::Read;
@@ -288,12 +258,9 @@ mod tests {
         let l = MetroWerksLibrary::try_from(ve.as_ref()).unwrap();
 
         println!("{:#?}", l);
-        println!("{} objects.", l.file_count());
 
-        for raw_file in l.file_iter() {
-            let ob = MetrowerksObject::try_from(raw_file.as_bytes()).unwrap();
-
-            println!("{:#?}", ob);
+        for f in l.file_iter() {
+            let ob = f.object();
 
             assert_eq!(
                 3,
@@ -305,10 +272,10 @@ mod tests {
 
             assert_eq!(
                 1,
-                ob.symbols().routines().len(),
+                ob.symbols().unwrap().routines().len(),
                 "Wrong number of routines, expected: {}, got: {}",
                 1,
-                ob.symbols().routines().len()
+                ob.symbols().unwrap().routines().len()
             );
 
             assert_eq!(
