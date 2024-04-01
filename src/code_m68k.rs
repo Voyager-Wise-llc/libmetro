@@ -103,12 +103,6 @@ pub struct ObjInitHunk {
 }
 
 impl ObjInitHunk {
-    fn new(code: &[u8]) -> Self {
-        Self {
-            code: code.to_owned(),
-        }
-    }
-
     pub fn code_iter(&self) -> Iter<u8> {
         self.code.iter()
     }
@@ -492,12 +486,6 @@ impl Default for Hunk {
     }
 }
 
-impl Hunk {
-    fn new(hunk: HunkType) -> Self {
-        Self { hunk: hunk }
-    }
-}
-
 #[allow(non_camel_case_types)]
 #[repr(u16)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -552,11 +540,9 @@ enum RawHunkType {
     HUNK_WEAK_IMPORT_CONTAINER,
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug)]
 enum HunkParseState {
-    Start,
-
-    ProcessTag,
+    ParseTag,
     ParseObjSimpleHunk(RawHunkType),
 
     ParseObjCodeHunk(RawHunkType),
@@ -581,14 +567,23 @@ enum HunkParseState {
 
     ParseReservedHunk(RawHunkType),
 
-    CommitHunk,
+    CommitHunk(Hunk),
 
     End,
 }
 
+impl PartialEq for HunkParseState {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::CommitHunk(_), Self::CommitHunk(_)) => true,
+            _ => core::mem::discriminant(self) == core::mem::discriminant(other),
+        }
+    }
+}
+
 impl Default for HunkParseState {
     fn default() -> Self {
-        HunkParseState::Start
+        HunkParseState::ParseTag
     }
 }
 
@@ -773,17 +768,10 @@ fn parse_code(value: &[u8]) -> Result<CodeHunks, String> {
 
     let mut hunks: Vec<Hunk> = vec![];
 
-    let mut current_hunk = Hunk::default();
-
     let mut state: HunkParseState = HunkParseState::default();
     while state != HunkParseState::End {
         state = match state {
-            HunkParseState::Start => {
-                current_hunk = Hunk::default();
-
-                HunkParseState::ProcessTag
-            }
-            HunkParseState::ProcessTag => {
+            HunkParseState::ParseTag => {
                 let tag = convert_be_u16(&data[0..2].try_into().unwrap());
 
                 data = &data[2..];
@@ -812,9 +800,7 @@ fn parse_code(value: &[u8]) -> Result<CodeHunks, String> {
                     }
                 };
 
-                current_hunk = Hunk::new(hunk);
-
-                HunkParseState::CommitHunk
+                HunkParseState::CommitHunk(Hunk { hunk: hunk })
             }
             HunkParseState::ParseReservedHunk(tag) => {
                 let hunk = match tag {
@@ -839,9 +825,7 @@ fn parse_code(value: &[u8]) -> Result<CodeHunks, String> {
                     }
                 };
 
-                current_hunk = Hunk::new(hunk);
-
-                HunkParseState::CommitHunk
+                HunkParseState::CommitHunk(Hunk { hunk: hunk })
             }
             HunkParseState::ParseObjCodeHunk(tag) => {
                 let special = match &hunks.last().unwrap().hunk {
@@ -875,9 +859,7 @@ fn parse_code(value: &[u8]) -> Result<CodeHunks, String> {
                     }
                 };
 
-                current_hunk = Hunk::new(hunk);
-
-                HunkParseState::CommitHunk
+                HunkParseState::CommitHunk(Hunk { hunk: hunk })
             }
             HunkParseState::ParseInitCodeHunk(tag) => {
                 let size = convert_be_u32(&data[0..4].try_into().unwrap());
@@ -886,7 +868,9 @@ fn parse_code(value: &[u8]) -> Result<CodeHunks, String> {
                 let code = &data[0..size as usize];
                 data = &data[size as usize..];
 
-                let obj_hunk = ObjInitHunk::new(code);
+                let obj_hunk = ObjInitHunk {
+                    code: code.to_owned(),
+                };
 
                 let hunk = match tag {
                     RawHunkType::HUNK_INIT_CODE => HunkType::InitCode(obj_hunk),
@@ -899,9 +883,7 @@ fn parse_code(value: &[u8]) -> Result<CodeHunks, String> {
                     }
                 };
 
-                current_hunk = Hunk::new(hunk);
-
-                HunkParseState::CommitHunk
+                HunkParseState::CommitHunk(Hunk { hunk: hunk })
             }
 
             HunkParseState::ParseDataHunk(tag) => {
@@ -950,9 +932,7 @@ fn parse_code(value: &[u8]) -> Result<CodeHunks, String> {
                     }
                 };
 
-                current_hunk = Hunk::new(hunk);
-
-                HunkParseState::CommitHunk
+                HunkParseState::CommitHunk(Hunk { hunk: hunk })
             }
             HunkParseState::ParseAltEntryHunk(tag) => {
                 let name_id = convert_be_u32(&data[0..4].try_into().unwrap());
@@ -973,9 +953,7 @@ fn parse_code(value: &[u8]) -> Result<CodeHunks, String> {
                     }
                 };
 
-                current_hunk = Hunk::new(hunk);
-
-                HunkParseState::CommitHunk
+                HunkParseState::CommitHunk(Hunk { hunk: hunk })
             }
             HunkParseState::ParseXRefHunk(tag) => {
                 let name_id = convert_be_u32(&data[0..4].try_into().unwrap());
@@ -1015,9 +993,7 @@ fn parse_code(value: &[u8]) -> Result<CodeHunks, String> {
                     }
                 };
 
-                current_hunk = Hunk::new(hunk);
-
-                HunkParseState::CommitHunk
+                HunkParseState::CommitHunk(Hunk { hunk: hunk })
             }
             HunkParseState::ParseExceptInfoHunk(tag) => {
                 let size = convert_be_u32(&data[0..4].try_into().unwrap());
@@ -1039,9 +1015,7 @@ fn parse_code(value: &[u8]) -> Result<CodeHunks, String> {
                     }
                 };
 
-                current_hunk = Hunk::new(hunk);
-
-                HunkParseState::CommitHunk
+                HunkParseState::CommitHunk(Hunk { hunk: hunk })
             }
             HunkParseState::ParseObjContainerHunk(tag) => {
                 let name_id = convert_be_u32(&data[0..4].try_into().unwrap());
@@ -1069,9 +1043,7 @@ fn parse_code(value: &[u8]) -> Result<CodeHunks, String> {
                     }
                 };
 
-                current_hunk = Hunk::new(hunk);
-
-                HunkParseState::CommitHunk
+                HunkParseState::CommitHunk(Hunk { hunk: hunk })
             }
             HunkParseState::ParseObjImportHunk(tag) => {
                 let name_id = convert_be_u32(&data[0..4].try_into().unwrap());
@@ -1091,9 +1063,7 @@ fn parse_code(value: &[u8]) -> Result<CodeHunks, String> {
                     }
                 };
 
-                current_hunk = Hunk::new(hunk);
-
-                HunkParseState::CommitHunk
+                HunkParseState::CommitHunk(Hunk { hunk: hunk })
             }
             HunkParseState::ParseDataPointerHunk(tag) => {
                 let dp_name: u32 = convert_be_u32(&data[0..4].try_into().unwrap());
@@ -1114,9 +1084,7 @@ fn parse_code(value: &[u8]) -> Result<CodeHunks, String> {
                     }
                 };
 
-                current_hunk = Hunk::new(hunk);
-
-                HunkParseState::CommitHunk
+                HunkParseState::CommitHunk(Hunk { hunk: hunk })
             }
             HunkParseState::ParseXPointerHunk(tag) => {
                 let xp_name: u32 = convert_be_u32(&data[0..4].try_into().unwrap());
@@ -1137,9 +1105,7 @@ fn parse_code(value: &[u8]) -> Result<CodeHunks, String> {
                     }
                 };
 
-                current_hunk = Hunk::new(hunk);
-
-                HunkParseState::CommitHunk
+                HunkParseState::CommitHunk(Hunk { hunk: hunk })
             }
             HunkParseState::ParseXVectorHunk(tag) => {
                 let xv_name: u32 = convert_be_u32(&data[0..4].try_into().unwrap());
@@ -1160,9 +1126,7 @@ fn parse_code(value: &[u8]) -> Result<CodeHunks, String> {
                     }
                 };
 
-                current_hunk = Hunk::new(hunk);
-
-                HunkParseState::CommitHunk
+                HunkParseState::CommitHunk(Hunk { hunk: hunk })
             }
             HunkParseState::ParseObjSourceHunk(tag) => {
                 let name_id: u32 = convert_be_u32(&data[0..4].try_into().unwrap());
@@ -1182,9 +1146,7 @@ fn parse_code(value: &[u8]) -> Result<CodeHunks, String> {
                     }
                 };
 
-                current_hunk = Hunk::new(hunk);
-
-                HunkParseState::CommitHunk
+                HunkParseState::CommitHunk(Hunk { hunk: hunk })
             }
             HunkParseState::ParseObjSegmentHunk(tag) => {
                 let name_id: u32 = convert_be_u32(&data[0..4].try_into().unwrap());
@@ -1203,9 +1165,7 @@ fn parse_code(value: &[u8]) -> Result<CodeHunks, String> {
                     }
                 };
 
-                current_hunk = Hunk::new(hunk);
-
-                HunkParseState::CommitHunk
+                HunkParseState::CommitHunk(Hunk { hunk: hunk })
             }
             HunkParseState::ParseObjMethHunk(tag) => {
                 let name_id: u32 = convert_be_u32(&data[0..4].try_into().unwrap());
@@ -1225,9 +1185,7 @@ fn parse_code(value: &[u8]) -> Result<CodeHunks, String> {
                     }
                 };
 
-                current_hunk = Hunk::new(hunk);
-
-                HunkParseState::CommitHunk
+                HunkParseState::CommitHunk(Hunk { hunk: hunk })
             }
             HunkParseState::ParseObjClassHunk(tag) => {
                 let name_id = convert_be_u32(&data[0..4].try_into().unwrap());
@@ -1262,18 +1220,16 @@ fn parse_code(value: &[u8]) -> Result<CodeHunks, String> {
                     }
                 };
 
-                current_hunk = Hunk::new(hunk);
-
-                HunkParseState::CommitHunk
+                HunkParseState::CommitHunk(Hunk { hunk: hunk })
             }
 
-            HunkParseState::CommitHunk => {
-                hunks.push(current_hunk.clone());
+            HunkParseState::CommitHunk(hunk) => {
+                hunks.push(hunk);
 
                 if data.len() == 0 {
                     HunkParseState::End
                 } else {
-                    HunkParseState::Start
+                    HunkParseState::ParseTag
                 }
             }
             _ => return Err(format!("Bad branch encountered: {:#?}", state)),
