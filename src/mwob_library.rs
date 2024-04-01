@@ -190,7 +190,7 @@ mod tests {
     use std::io::Read;
 
     #[test]
-    fn test_simple_library() {
+    fn test_simple_add_library() {
         let mut lib = File::open("test/data/add.lib.metro").unwrap();
         let mut ve: Vec<u8> = vec![];
         lib.read_to_end(&mut ve).unwrap();
@@ -223,6 +223,84 @@ mod tests {
                 ob.hunks().len(),
                 "Wrong number of hunks, expected: {}, got: {}",
                 3,
+                ob.hunks().len()
+            );
+        }
+    }
+
+    #[test]
+    fn test_simple_multi_func_library() {
+        let mut lib = File::open("test/data/two_funcs.lib.metro").unwrap();
+        let mut ve: Vec<u8> = vec![];
+        lib.read_to_end(&mut ve).unwrap();
+
+        let l = MetroWerksLibrary::try_from(ve.as_ref()).unwrap();
+
+        println!("{:#?}", l);
+
+        for f in l.file_iter() {
+            let ob = f.object();
+
+            assert_eq!(
+                4,
+                ob.names().len(),
+                "Wrong number of names, expected: {}, got: {}",
+                4,
+                ob.names().len()
+            );
+
+            assert_eq!(
+                2,
+                ob.symbols().unwrap().routines().len(),
+                "Wrong number of routines, expected: {}, got: {}",
+                2,
+                ob.symbols().unwrap().routines().len()
+            );
+
+            assert_eq!(
+                4,
+                ob.hunks().len(),
+                "Wrong number of hunks, expected: {}, got: {}",
+                4,
+                ob.hunks().len()
+            );
+        }
+    }
+
+    #[test]
+    fn test_cw_set_volume_example_library() {
+        let mut lib = File::open("test/data/set_volume_ex.lib.metro").unwrap();
+        let mut ve: Vec<u8> = vec![];
+        lib.read_to_end(&mut ve).unwrap();
+
+        let l = MetroWerksLibrary::try_from(ve.as_ref()).unwrap();
+
+        println!("{:#?}", l);
+
+        for f in l.file_iter() {
+            let ob = f.object();
+
+            assert_eq!(
+                2,
+                ob.names().len(),
+                "Wrong number of names, expected: {}, got: {}",
+                2,
+                ob.names().len()
+            );
+
+            assert_eq!(
+                1,
+                ob.symbols().unwrap().routines().len(),
+                "Wrong number of routines, expected: {}, got: {}",
+                1,
+                ob.symbols().unwrap().routines().len()
+            );
+
+            assert_eq!(
+                5,
+                ob.hunks().len(),
+                "Wrong number of hunks, expected: {}, got: {}",
+                5,
                 ob.hunks().len()
             );
         }
