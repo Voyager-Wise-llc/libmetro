@@ -13,147 +13,6 @@ pub enum SymTableMagicWord {
     SymTableMagicWord = 0x53594D48,
 }
 
-struct SymbolTableHeader {
-    type_offset: u32,
-    num_types: u32,
-    unnamed: u32,
-    reserved: [u32; 4],
-}
-
-// TODO: This also sucks and needs refactoring
-impl Default for SymbolTableHeader {
-    fn default() -> Self {
-        Self {
-            type_offset: 0,
-            num_types: 0,
-            unnamed: 0,
-            reserved: [0, 0, 0, 0],
-        }
-    }
-}
-
-impl SymbolTableHeader {
-    fn type_offset(self, type_offset: u32) -> Self {
-        Self {
-            type_offset: type_offset,
-            num_types: self.num_types,
-            unnamed: self.unnamed,
-            reserved: self.reserved,
-        }
-    }
-    fn num_types(self, types: u32) -> Self {
-        Self {
-            type_offset: self.type_offset,
-            num_types: types,
-            unnamed: self.unnamed,
-            reserved: self.reserved,
-        }
-    }
-    pub fn unnamed(self, unnamed: u32) -> Self {
-        Self {
-            type_offset: self.type_offset,
-            num_types: self.num_types,
-            unnamed: unnamed,
-            reserved: self.reserved,
-        }
-    }
-    pub fn reserved(self, reserved: [u32; 4]) -> Self {
-        Self {
-            type_offset: self.type_offset,
-            num_types: self.num_types,
-            unnamed: self.unnamed,
-            reserved: reserved,
-        }
-    }
-
-    #[inline(always)]
-    pub fn type_table_start(&self) -> usize {
-        self.type_offset as usize
-    }
-
-    #[inline(always)]
-    pub fn type_table_count(&self) -> u32 {
-        self.num_types
-    }
-}
-
-#[derive(PartialEq)]
-enum SymTabParseState {
-    SymTabHeaderStart,
-    SymTabHeaderMagicWord,
-    SymTabHeaderTypeOffset,
-    SymTabHeaderTypes,
-    SymTabHeaderUnnamed,
-    SymTabHeaderReserved,
-
-    ProcessRoutineTableStart,
-    ProcessRoutines,
-
-    End,
-}
-
-impl Default for SymTabParseState {
-    fn default() -> Self {
-        SymTabParseState::SymTabHeaderStart
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct SymbolTable {
-    routines: Vec<Routine>,
-    types: Vec<TypeDefinition>,
-}
-
-impl TryFrom<&[u8]> for SymbolTable {
-    type Error = String;
-
-    fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
-        parse_symtab(value)
-    }
-}
-
-impl RawLength for SymbolTable {
-    fn raw_length(&self) -> usize {
-        32 + self.routines.iter().map(|x| x.raw_length()).sum::<usize>()
-            + self.types().iter().map(|x| x.raw_length()).sum::<usize>()
-    }
-}
-
-impl SymbolTable {
-    pub fn routines(&self) -> &[Routine] {
-        &self.routines
-    }
-
-    pub fn routine_iter(&self) -> Iter<Routine> {
-        self.routines.iter()
-    }
-
-    pub fn types(&self) -> &[TypeDefinition] {
-        &self.types
-    }
-
-    pub fn type_iter(&self) -> Iter<TypeDefinition> {
-        self.types.iter()
-    }
-
-    pub fn routine_at_offset(&self, offset: usize) -> &Routine {
-        let mut i = 0;
-        let mut off = offset;
-
-        // Remove the Symtab header
-        off -= 32;
-
-        let mut iter = self.routines.iter();
-        while off > 0 {
-            let r = iter.next().unwrap();
-            off -= r.raw_length();
-            i += 1;
-        }
-
-        &self.routines[i]
-    }
-}
-
 #[derive(Debug, Clone)]
 pub struct StatementLocation {
     offset: i32,
@@ -385,98 +244,106 @@ fn convert_reserved(data: &[u8; 16]) -> [u32; 4] {
     res.map(|v| u32::from_be(v))
 }
 
-fn parse_symtab(value: &[u8]) -> Result<SymbolTable, String> {
-    let mut header: SymbolTableHeader = SymbolTableHeader::default();
+#[derive(Debug, Clone)]
+pub struct SymbolTable {
+    unnamed: u32, // CVW: This may be resolvable where 'name_id == 0' in type table entries.
+    reserved: [u32; 4],
+    routines: Vec<Routine>,
+    types: Vec<TypeDefinition>,
+}
 
-    let mut routines: Vec<Routine> = vec![];
-    let mut routine_bytes: &[u8] = <&[u8]>::default();
+impl TryFrom<&[u8]> for SymbolTable {
+    type Error = String;
 
-    let mut state: SymTabParseState = SymTabParseState::default();
-    while state != SymTabParseState::End {
-        state = match state {
-            SymTabParseState::SymTabHeaderStart => SymTabParseState::SymTabHeaderMagicWord,
-            SymTabParseState::SymTabHeaderMagicWord => {
-                let x = convert_be_u32(&value[0..4].try_into().unwrap());
+    fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
+        parse_symtab(value)
+    }
+}
 
-                if x != SymTableMagicWord::SymTableMagicWord as u32 {
-                    return Err(format!(
-                        "Bad magic word, Expected: {}, got: {}",
-                        SymTableMagicWord::SymTableMagicWord as u32,
-                        x
-                    ));
-                }
+impl RawLength for SymbolTable {
+    fn raw_length(&self) -> usize {
+        32 + self.routines.iter().map(|x| x.raw_length()).sum::<usize>()
+            + self.types().iter().map(|x| x.raw_length()).sum::<usize>()
+    }
+}
 
-                SymTabParseState::SymTabHeaderTypeOffset
-            }
-
-            /* Type Table */
-            SymTabParseState::SymTabHeaderTypeOffset => {
-                let x = convert_be_u32(&value[4..8].try_into().unwrap());
-
-                header = header.type_offset(x);
-
-                if x != 0 {
-                    SymTabParseState::SymTabHeaderTypes
-                } else {
-                    // No Types defined, skip processing types
-                    SymTabParseState::SymTabHeaderReserved
-                }
-            }
-            SymTabParseState::SymTabHeaderTypes => {
-                let x = convert_be_u32(&value[8..12].try_into().unwrap());
-
-                header = header.num_types(x);
-
-                SymTabParseState::SymTabHeaderUnnamed
-            }
-            SymTabParseState::SymTabHeaderUnnamed => {
-                let x = convert_be_u32(&value[12..16].try_into().unwrap());
-
-                header = header.unnamed(x);
-
-                SymTabParseState::SymTabHeaderReserved
-            }
-
-            /* MetroWerks reserved  */
-            SymTabParseState::SymTabHeaderReserved => {
-                let x = convert_reserved(&value[16..32].try_into().unwrap());
-
-                header = header.reserved(x);
-
-                SymTabParseState::ProcessRoutineTableStart
-            }
-
-            /* Routine Table */
-            SymTabParseState::ProcessRoutineTableStart => {
-                if value.len() > 32 {
-                    routine_bytes = &value[32..];
-                    SymTabParseState::ProcessRoutines
-                } else {
-                    SymTabParseState::End
-                }
-            }
-            SymTabParseState::ProcessRoutines => {
-                while routine_bytes.len() != 0 {
-                    let r: Routine = Routine::try_from(routine_bytes).unwrap();
-                    routine_bytes = &routine_bytes[r.raw_length()..];
-
-                    routines.push(r);
-                }
-
-                SymTabParseState::End
-            }
-            _ => {
-                todo!()
-            }
-        }
+impl SymbolTable {
+    pub fn routines(&self) -> &[Routine] {
+        &self.routines
     }
 
-    let tt_start = header.type_table_start();
+    pub fn routine_iter(&self) -> Iter<Routine> {
+        self.routines.iter()
+    }
 
-    let type_table = if tt_start != 0 {
-        let tbl = &value[tt_start..];
-        let num_types = header.type_table_count();
+    pub fn types(&self) -> &[TypeDefinition] {
+        &self.types
+    }
 
+    pub fn type_iter(&self) -> Iter<TypeDefinition> {
+        self.types.iter()
+    }
+
+    pub fn routine_at_offset(&self, offset: usize) -> &Routine {
+        let mut i = 0;
+        let mut off = offset;
+
+        // Remove the Symtab header
+        off -= 32;
+
+        let mut iter = self.routines.iter();
+        while off > 0 {
+            let r = iter.next().unwrap();
+            off -= r.raw_length();
+            i += 1;
+        }
+
+        &self.routines[i]
+    }
+
+    pub fn reserved(&self) -> [u32; 4] {
+        self.reserved
+    }
+
+    pub fn num_unnamed(&self) -> u32 {
+        self.unnamed
+    }
+}
+
+fn parse_symtab(value: &[u8]) -> Result<SymbolTable, String> {
+    // Process header
+    let magic = convert_be_u32(&value[0..4].try_into().unwrap());
+
+    if magic != SymTableMagicWord::SymTableMagicWord as u32 {
+        return Err(format!(
+            "Bad magic word, Expected: {}, got: {}",
+            SymTableMagicWord::SymTableMagicWord as u32,
+            magic
+        ));
+    }
+    let type_offset = convert_be_u32(&value[4..8].try_into().unwrap()) as usize;
+    let num_types = convert_be_u32(&value[8..12].try_into().unwrap());
+    let num_unnamed = convert_be_u32(&value[12..16].try_into().unwrap());
+    let reserved = convert_reserved(&value[16..32].try_into().unwrap());
+
+    // Process Routines
+    let routines = if value.len() > 0 {
+        let mut routine_bytes = &value[32..];
+        let mut rs: Vec<Routine> = vec![];
+        while routine_bytes.len() != 0 {
+            let r: Routine = Routine::try_from(routine_bytes).unwrap();
+            routine_bytes = &routine_bytes[r.raw_length()..];
+
+            rs.push(r);
+        }
+        rs
+    } else {
+        vec![]
+    };
+
+    // Process Type Table
+    let type_table = if type_offset != 0 {
+        let tbl = &value[type_offset..];
         TypeTable::try_from((tbl, num_types))
             .unwrap()
             .types()
@@ -486,6 +353,8 @@ fn parse_symtab(value: &[u8]) -> Result<SymbolTable, String> {
     };
 
     Ok(SymbolTable {
+        unnamed: num_unnamed,
+        reserved: reserved,
         routines: routines,
         types: type_table,
     })
