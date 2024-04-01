@@ -252,14 +252,6 @@ pub struct SymbolTable {
     types: Vec<TypeDefinition>,
 }
 
-impl TryFrom<&[u8]> for SymbolTable {
-    type Error = String;
-
-    fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
-        parse_symtab(value)
-    }
-}
-
 impl RawLength for SymbolTable {
     fn raw_length(&self) -> usize {
         32 + self.routines.iter().map(|x| x.raw_length()).sum::<usize>()
@@ -310,52 +302,56 @@ impl SymbolTable {
     }
 }
 
-fn parse_symtab(value: &[u8]) -> Result<SymbolTable, String> {
-    // Process header
-    let magic = convert_be_u32(&value[0..4].try_into().unwrap());
+impl TryFrom<&[u8]> for SymbolTable {
+    type Error = String;
 
-    if magic != SymTableMagicWord::SymTableMagicWord as u32 {
-        return Err(format!(
-            "Bad magic word, Expected: {}, got: {}",
-            SymTableMagicWord::SymTableMagicWord as u32,
-            magic
-        ));
-    }
-    let type_offset = convert_be_u32(&value[4..8].try_into().unwrap()) as usize;
-    let num_types = convert_be_u32(&value[8..12].try_into().unwrap());
-    let num_unnamed = convert_be_u32(&value[12..16].try_into().unwrap());
-    let reserved = convert_reserved(&value[16..32].try_into().unwrap());
+    fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
+        // Process header
+        let magic = convert_be_u32(&value[0..4].try_into().unwrap());
 
-    // Process Routines
-    let routines = if value.len() > 0 {
-        let mut routine_bytes = &value[32..];
-        let mut rs: Vec<Routine> = vec![];
-        while routine_bytes.len() != 0 {
-            let r: Routine = Routine::try_from(routine_bytes).unwrap();
-            routine_bytes = &routine_bytes[r.raw_length()..];
-
-            rs.push(r);
+        if magic != SymTableMagicWord::SymTableMagicWord as u32 {
+            return Err(format!(
+                "Bad magic word, Expected: {}, got: {}",
+                SymTableMagicWord::SymTableMagicWord as u32,
+                magic
+            ));
         }
-        rs
-    } else {
-        vec![]
-    };
+        let type_offset = convert_be_u32(&value[4..8].try_into().unwrap()) as usize;
+        let num_types = convert_be_u32(&value[8..12].try_into().unwrap());
+        let num_unnamed = convert_be_u32(&value[12..16].try_into().unwrap());
+        let reserved = convert_reserved(&value[16..32].try_into().unwrap());
 
-    // Process Type Table
-    let type_table = if type_offset != 0 {
-        let tbl = &value[type_offset..];
-        TypeTable::try_from((tbl, num_types))
-            .unwrap()
-            .types()
-            .to_owned()
-    } else {
-        vec![]
-    };
+        // Process Routines
+        let routines = if value.len() > 0 {
+            let mut routine_bytes = &value[32..];
+            let mut rs: Vec<Routine> = vec![];
+            while routine_bytes.len() != 0 {
+                let r: Routine = Routine::try_from(routine_bytes).unwrap();
+                routine_bytes = &routine_bytes[r.raw_length()..];
 
-    Ok(SymbolTable {
-        unnamed: num_unnamed,
-        reserved: reserved,
-        routines: routines,
-        types: type_table,
-    })
+                rs.push(r);
+            }
+            rs
+        } else {
+            vec![]
+        };
+
+        // Process Type Table
+        let type_table = if type_offset != 0 {
+            let tbl = &value[type_offset..];
+            TypeTable::try_from((tbl, num_types))
+                .unwrap()
+                .types()
+                .to_owned()
+        } else {
+            vec![]
+        };
+
+        Ok(SymbolTable {
+            unnamed: num_unnamed,
+            reserved: reserved,
+            routines: routines,
+            types: type_table,
+        })
+    }
 }

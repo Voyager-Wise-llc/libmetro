@@ -159,42 +159,34 @@ impl RawLength for ObjectHeader {
 }
 
 impl ObjectHeader {
-    #[inline(always)]
     pub fn obj_start(&self) -> usize {
-        64 as usize
+        64
     }
 
-    #[inline(always)]
     pub fn obj_length(&self) -> usize {
         self.obj_size as usize
     }
 
-    #[inline(always)]
     pub fn obj_end(&self) -> usize {
         self.obj_start() + self.obj_length()
     }
 
-    #[inline(always)]
     pub fn symtable_start(&self) -> usize {
         self.symtable_offset as usize
     }
 
-    #[inline(always)]
     pub fn symtable_length(&self) -> usize {
         self.symtable_size as usize
     }
 
-    #[inline(always)]
     pub fn symtable_end(&self) -> usize {
         self.symtable_start() + self.symtable_length()
     }
 
-    #[inline(always)]
     pub fn nametable_start(&self) -> usize {
         self.nametable_offset as usize
     }
 
-    #[inline(always)]
     pub fn nametable_count(&self) -> usize {
         self.nametable_names as usize
     }
@@ -276,14 +268,6 @@ pub struct MetrowerksObject {
     hunks: CodeHunks,
 }
 
-impl TryFrom<&[u8]> for MetrowerksObject {
-    type Error = String;
-
-    fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
-        parse_object(value)
-    }
-}
-
 impl MetrowerksObject {
     pub fn names(&self) -> &[NameEntry] {
         &self.names
@@ -310,61 +294,66 @@ impl MetrowerksObject {
     }
 }
 
-fn parse_object(value: &[u8]) -> Result<MetrowerksObject, String> {
-    let header = ObjectHeader::try_from(value)?;
+impl TryFrom<&[u8]> for MetrowerksObject {
+    type Error = String;
 
-    let name_table = if header.nametable_start() != 0 {
-        let mut names: Vec<NameEntry> = vec![];
-        let mut name_bytes = &value[header.nametable_start()..];
-        let mut remaining_names = header.nametable_count();
-        let mut name_id = 1;
-        while remaining_names > 0 {
-            let s = CStr::from_bytes_until_nul(&name_bytes[2..usize::min(257, name_bytes.len())])
-                .unwrap()
-                .to_str()
-                .unwrap()
-                .to_owned();
-            let end_of_entry = 2 + s.as_bytes().len() + 1;
-            name_bytes = &name_bytes[end_of_entry..];
-            names.push(NameEntry {
-                id: name_id,
-                name: s,
-            });
+    fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
+        let header = ObjectHeader::try_from(value)?;
 
-            remaining_names -= 1;
-            name_id += 1;
-        }
-        names
-    } else {
-        vec![]
-    };
+        let name_table = if header.nametable_start() != 0 {
+            let mut names: Vec<NameEntry> = vec![];
+            let mut name_bytes = &value[header.nametable_start()..];
+            let mut remaining_names = header.nametable_count();
+            let mut name_id = 1;
+            while remaining_names > 0 {
+                let s =
+                    CStr::from_bytes_until_nul(&name_bytes[2..usize::min(257, name_bytes.len())])
+                        .unwrap()
+                        .to_str()
+                        .unwrap()
+                        .to_owned();
+                let end_of_entry = 2 + s.as_bytes().len() + 1;
+                name_bytes = &name_bytes[end_of_entry..];
+                names.push(NameEntry {
+                    id: name_id,
+                    name: s,
+                });
 
-    // SymTab Processing
-    let sym_tab_start = header.symtable_start();
-    let sym_tab_end = header.symtable_end();
+                remaining_names -= 1;
+                name_id += 1;
+            }
+            names
+        } else {
+            vec![]
+        };
 
-    let symtab = if sym_tab_start != 0 {
-        let symbol_bytes = &value[sym_tab_start..sym_tab_end];
+        // SymTab Processing
+        let sym_tab_start = header.symtable_start();
+        let sym_tab_end = header.symtable_end();
 
-        Option::Some(SymbolTable::try_from(symbol_bytes).unwrap())
-    } else {
-        Option::None
-    };
+        let symtab = if sym_tab_start != 0 {
+            let symbol_bytes = &value[sym_tab_start..sym_tab_end];
 
-    // Object code processing
-    let code_objects = {
-        let start = header.obj_start();
-        let end = header.obj_end();
+            Option::Some(SymbolTable::try_from(symbol_bytes).unwrap())
+        } else {
+            Option::None
+        };
 
-        let object_bytes = &value[start..end];
+        // Object code processing
+        let code_objects = {
+            let start = header.obj_start();
+            let end = header.obj_end();
 
-        CodeHunks::try_from(object_bytes).unwrap()
-    };
+            let object_bytes = &value[start..end];
 
-    Ok(MetrowerksObject {
-        header: header,
-        names: name_table,
-        symtab: symtab,
-        hunks: code_objects,
-    })
+            CodeHunks::try_from(object_bytes).unwrap()
+        };
+
+        Ok(MetrowerksObject {
+            header: header,
+            names: name_table,
+            symtab: symtab,
+            hunks: code_objects,
+        })
+    }
 }

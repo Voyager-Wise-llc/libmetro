@@ -741,91 +741,89 @@ impl RawLength for TypeTable {
     }
 }
 
-impl TryFrom<(&[u8], u32)> for TypeTable {
-    type Error = String;
-
-    fn try_from(value: (&[u8], u32)) -> Result<Self, Self::Error> {
-        parse_types(value.0, value.1)
-    }
-}
-
 impl TypeTable {
     pub fn types(&self) -> &[TypeDefinition] {
         &self.table
     }
 }
 
-fn parse_types(value: &[u8], num_types: u32) -> Result<TypeTable, String> {
-    if num_types == 0 {
-        return Ok(TypeTable { table: vec![] });
-    }
-    let mut data: &[u8] = value;
+impl TryFrom<(&[u8], u32)> for TypeTable {
+    type Error = String;
 
-    let mut types: Vec<TypeDefinition> = vec![];
-    let mut remaining_types = num_types;
-
-    let mut state: TypeParseState = TypeParseState::default();
-    while state != TypeParseState::End {
-        state = match state {
-            TypeParseState::ParseTag => {
-                let tag = convert_be_u16(&data[0..2].try_into().unwrap());
-                let id = convert_be_u32(&data[2..6].try_into().unwrap());
-
-                data = &data[6..];
-                TypeParseState::try_from((tag, id)).unwrap() // Jump to the proper processing state
-            }
-
-            TypeParseState::ParsePointer(id) => {
-                TypeParseState::CommitType(id, OtherDataType::TypePointer(Pointer::from(data)))
-            }
-            TypeParseState::ParseArray(id) => {
-                TypeParseState::CommitType(id, OtherDataType::TypeArray(Array::from(data)))
-            }
-            TypeParseState::ParseStruct(id) => {
-                TypeParseState::CommitType(id, OtherDataType::TypeStruct(Struct::from(data)))
-            }
-            TypeParseState::ParseEnum(id) => {
-                let e = match Enum::try_from(data) {
-                    Ok(x) => x,
-                    Err(x) => return Err(x),
-                };
-
-                TypeParseState::CommitType(id, OtherDataType::TypeEnum(e))
-            }
-            TypeParseState::ParsePascalArray(id) => TypeParseState::CommitType(
-                id,
-                OtherDataType::TypePascalArray(PascalArray::from(data)),
-            ),
-            TypeParseState::ParseRange(id) => TypeParseState::CommitType(
-                id,
-                OtherDataType::TypePascalRange(PascalRange::from(data)),
-            ),
-            TypeParseState::ParseSet(id) => {
-                TypeParseState::CommitType(id, OtherDataType::TypePascalSet(PascalSet::from(data)))
-            }
-            TypeParseState::ParsePascalEnum(id) => TypeParseState::CommitType(
-                id,
-                OtherDataType::TypePascalEnum(PascalEnum::from(data)),
-            ),
-            TypeParseState::ParsePascalString(id) => TypeParseState::CommitType(
-                id,
-                OtherDataType::TypePascalString(PascalString::from(data)),
-            ),
-
-            TypeParseState::CommitType(id, typ) => {
-                data = &data[typ.raw_length()..];
-
-                types.push(TypeDefinition { typ: typ, id: id });
-                remaining_types -= 1;
-
-                if remaining_types != 0 {
-                    TypeParseState::ParseTag
-                } else {
-                    TypeParseState::End
-                }
-            }
-            _ => todo!(),
+    fn try_from(value: (&[u8], u32)) -> Result<Self, Self::Error> {
+        let num_types = value.1;
+        if num_types == 0 {
+            return Ok(TypeTable { table: vec![] });
         }
+        let mut data: &[u8] = value.0;
+
+        let mut types: Vec<TypeDefinition> = vec![];
+        let mut remaining_types = num_types;
+
+        let mut state: TypeParseState = TypeParseState::default();
+        while state != TypeParseState::End {
+            state = match state {
+                TypeParseState::ParseTag => {
+                    let tag = convert_be_u16(&data[0..2].try_into().unwrap());
+                    let id = convert_be_u32(&data[2..6].try_into().unwrap());
+
+                    data = &data[6..];
+                    TypeParseState::try_from((tag, id)).unwrap() // Jump to the proper processing state
+                }
+
+                TypeParseState::ParsePointer(id) => {
+                    TypeParseState::CommitType(id, OtherDataType::TypePointer(Pointer::from(data)))
+                }
+                TypeParseState::ParseArray(id) => {
+                    TypeParseState::CommitType(id, OtherDataType::TypeArray(Array::from(data)))
+                }
+                TypeParseState::ParseStruct(id) => {
+                    TypeParseState::CommitType(id, OtherDataType::TypeStruct(Struct::from(data)))
+                }
+                TypeParseState::ParseEnum(id) => {
+                    let e = match Enum::try_from(data) {
+                        Ok(x) => x,
+                        Err(x) => return Err(x),
+                    };
+
+                    TypeParseState::CommitType(id, OtherDataType::TypeEnum(e))
+                }
+                TypeParseState::ParsePascalArray(id) => TypeParseState::CommitType(
+                    id,
+                    OtherDataType::TypePascalArray(PascalArray::from(data)),
+                ),
+                TypeParseState::ParseRange(id) => TypeParseState::CommitType(
+                    id,
+                    OtherDataType::TypePascalRange(PascalRange::from(data)),
+                ),
+                TypeParseState::ParseSet(id) => TypeParseState::CommitType(
+                    id,
+                    OtherDataType::TypePascalSet(PascalSet::from(data)),
+                ),
+                TypeParseState::ParsePascalEnum(id) => TypeParseState::CommitType(
+                    id,
+                    OtherDataType::TypePascalEnum(PascalEnum::from(data)),
+                ),
+                TypeParseState::ParsePascalString(id) => TypeParseState::CommitType(
+                    id,
+                    OtherDataType::TypePascalString(PascalString::from(data)),
+                ),
+
+                TypeParseState::CommitType(id, typ) => {
+                    data = &data[typ.raw_length()..];
+
+                    types.push(TypeDefinition { typ: typ, id: id });
+                    remaining_types -= 1;
+
+                    if remaining_types != 0 {
+                        TypeParseState::ParseTag
+                    } else {
+                        TypeParseState::End
+                    }
+                }
+                _ => todo!(),
+            }
+        }
+        Ok(TypeTable { table: types })
     }
-    Ok(TypeTable { table: types })
 }
