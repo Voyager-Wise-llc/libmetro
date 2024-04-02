@@ -1,10 +1,13 @@
-use std::ops::{Deref, Range};
+use std::{
+    io::{ErrorKind, Write},
+    ops::{Deref, Range},
+};
 
-use crate::util::RawLength;
+use crate::util::{RawLength, Serializable};
 
 use super::util::{convert_be_u16, convert_be_u32, NameIdFromObject};
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum DataType {
     Undefined(()),
     BasicDataType(BasicDataType),
@@ -12,7 +15,7 @@ pub enum DataType {
 }
 
 #[repr(u16)]
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum BasicDataType {
     BasicTypeVoid = 0,
     BasicTypePstring,
@@ -42,6 +45,30 @@ pub enum BasicDataType {
     MyBasicTypeFunc,
     MyBasicTypeStringPtr,
     MyBasicTypePstringPtr, /* Pascal str. pointer */
+}
+
+impl TryInto<u16> for DataType {
+    type Error = ErrorKind;
+
+    fn try_into(self) -> Result<u16, Self::Error> {
+        match self {
+            DataType::Undefined(_) => Err(ErrorKind::InvalidInput),
+            DataType::BasicDataType(t) => Ok(t as u16),
+            DataType::Other(_) => Err(ErrorKind::InvalidInput),
+        }
+    }
+}
+
+impl TryInto<u32> for DataType {
+    type Error = ErrorKind;
+
+    fn try_into(self) -> Result<u32, Self::Error> {
+        match self {
+            DataType::Undefined(_) => Err(ErrorKind::InvalidInput),
+            DataType::BasicDataType(t) => Ok(t as u32),
+            DataType::Other(id) => Ok(id),
+        }
+    }
 }
 
 impl From<u32> for DataType {
@@ -151,6 +178,20 @@ impl From<&[u8]> for Pointer {
     }
 }
 
+impl Serializable for Pointer {
+    fn serialize_out<W: Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        writer.write_all(
+            &(u16::try_from(self.number).map_err(|_| ErrorKind::InvalidInput)?).to_be_bytes(),
+        )?;
+
+        writer.write_all(
+            &(TryInto::<u32>::try_into(<DataType as Clone>::clone(&self.typ))
+                .map_err(|_| ErrorKind::InvalidInput)?)
+            .to_be_bytes(),
+        )
+    }
+}
+
 impl Pointer {
     pub fn number(&self) -> u16 {
         self.number
@@ -160,6 +201,7 @@ impl Pointer {
         &self.typ
     }
 }
+
 impl RawLength for Pointer {
     fn raw_length(&self) -> usize {
         6
@@ -184,6 +226,19 @@ impl From<&[u8]> for Array {
             esize: esize,
             typ: DataType::from(typ),
         }
+    }
+}
+
+impl Serializable for Array {
+    fn serialize_out<W: Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        writer.write_all(&(self.size.to_be_bytes()))?;
+        writer.write_all(&(self.esize.to_be_bytes()))?;
+
+        writer.write_all(
+            &(TryInto::<u32>::try_into(<DataType as Clone>::clone(&self.typ))
+                .map_err(|_| ErrorKind::InvalidInput)?)
+            .to_be_bytes(),
+        )
     }
 }
 
@@ -230,6 +285,32 @@ impl RawLength for StructMember {
     }
 }
 
+impl From<&[u8]> for StructMember {
+    fn from(value: &[u8]) -> Self {
+        let name = convert_be_u32(&value[0..4].try_into().unwrap());
+        let typ = convert_be_u32(&value[4..8].try_into().unwrap());
+        let offset = convert_be_u32(&value[8..12].try_into().unwrap());
+        StructMember {
+            name_id: name,
+            typ: DataType::from(typ),
+            offset: offset,
+        }
+    }
+}
+
+impl Serializable for StructMember {
+    fn serialize_out<W: Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        writer.write_all(&(self.name_id.to_be_bytes()))?;
+
+        writer.write_all(
+            &(TryInto::<u32>::try_into(<DataType as Clone>::clone(&self.typ))
+                .map_err(|_| ErrorKind::InvalidInput)?)
+            .to_be_bytes(),
+        )?;
+        writer.write_all(&(self.offset.to_be_bytes()))
+    }
+}
+
 #[derive(NameIdFromObject, Debug, Clone)]
 pub struct Struct {
     name_id: u32,
@@ -256,17 +337,10 @@ impl From<&[u8]> for Struct {
 
         let mut members: Vec<StructMember> = vec![];
         for _idx in 0..num_members {
-            let name = convert_be_u32(&data[0..4].try_into().unwrap());
-            let typ = convert_be_u32(&data[4..8].try_into().unwrap());
-            let offset = convert_be_u32(&data[8..12].try_into().unwrap());
-            let m = StructMember {
-                name_id: name,
-                typ: DataType::from(typ),
-                offset: offset,
-            };
-            members.push(m);
+            let sm = StructMember::from(data);
+            data = &data[sm.raw_length()..];
 
-            data = &data[12..]
+            members.push(sm);
         }
 
         Struct {
@@ -274,6 +348,23 @@ impl From<&[u8]> for Struct {
             size: size,
             members: members,
         }
+    }
+}
+
+impl Serializable for Struct {
+    fn serialize_out<W: Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        writer.write_all(&(self.name_id.to_be_bytes()))?;
+
+        writer.write_all(&(self.size.to_be_bytes()))?;
+        writer.write_all(
+            &(u16::try_from(self.len()).map_err(|_| ErrorKind::InvalidInput)?).to_be_bytes(),
+        )?;
+
+        for sm in self.iter() {
+            sm.serialize_out(writer)?;
+        }
+
+        Ok(())
     }
 }
 
@@ -307,6 +398,24 @@ impl RawLength for EnumMember {
     }
 }
 
+impl From<&[u8]> for EnumMember {
+    fn from(value: &[u8]) -> Self {
+        let name = convert_be_u32(&value[0..4].try_into().unwrap());
+        let value = convert_be_u32(&value[4..8].try_into().unwrap());
+        EnumMember {
+            name_id: name,
+            value: value,
+        }
+    }
+}
+
+impl Serializable for EnumMember {
+    fn serialize_out<W: Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        writer.write_all(&(self.name_id.to_be_bytes()))?;
+        writer.write_all(&(self.value.to_be_bytes()))
+    }
+}
+
 #[derive(NameIdFromObject, Debug, Clone)]
 pub struct Enum {
     name_id: u32,
@@ -331,6 +440,26 @@ impl Enum {
 impl RawLength for Enum {
     fn raw_length(&self) -> usize {
         8 + self.members.iter().map(|x| x.raw_length()).sum::<usize>()
+    }
+}
+
+impl Serializable for Enum {
+    fn serialize_out<W: Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        writer.write_all(&(self.name_id.to_be_bytes()))?;
+        writer.write_all(
+            &(TryInto::<u16>::try_into(<DataType as Clone>::clone(&self.typ))
+                .map_err(|_| ErrorKind::InvalidInput)?)
+            .to_be_bytes(),
+        )?;
+        writer.write_all(
+            &(u16::try_from(self.len()).map_err(|_| ErrorKind::InvalidInput)?).to_be_bytes(),
+        )?;
+
+        for em in self.iter() {
+            em.serialize_out(writer)?;
+        }
+
+        Ok(())
     }
 }
 
@@ -377,6 +506,20 @@ pub struct PascalArray {
     iid: u32,
     eid: DataType,
     name_id: u32,
+}
+
+impl Serializable for PascalArray {
+    fn serialize_out<W: Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        writer.write_all(&(self.packed as u32).to_be_bytes())?;
+        writer.write_all(&(self.size.to_be_bytes()))?;
+        writer.write_all(&(self.iid.to_be_bytes()))?;
+        writer.write_all(
+            &(TryInto::<u32>::try_into(<DataType as Clone>::clone(&self.eid))
+                .map_err(|_| ErrorKind::InvalidInput)?)
+            .to_be_bytes(),
+        )?;
+        writer.write_all(&(self.name_id.to_be_bytes()))
+    }
 }
 
 impl From<&[u8]> for PascalArray {
@@ -428,6 +571,21 @@ pub struct PascalRange {
     size: u32,
     lower: u32,
     upper: u32,
+}
+
+impl Serializable for PascalRange {
+    fn serialize_out<W: Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        writer.write_all(&(self.name_id.to_be_bytes()))?;
+
+        writer.write_all(
+            &(TryInto::<u32>::try_into(<DataType as Clone>::clone(&self.typ))
+                .map_err(|_| ErrorKind::InvalidInput)?)
+            .to_be_bytes(),
+        )?;
+        writer.write_all(&(self.size.to_be_bytes()))?;
+        writer.write_all(&(self.lower.to_be_bytes()))?;
+        writer.write_all(&(self.upper.to_be_bytes()))
+    }
 }
 
 impl From<&[u8]> for PascalRange {
@@ -485,6 +643,20 @@ pub struct PascalSet {
     size: u32,
 }
 
+impl Serializable for PascalSet {
+    fn serialize_out<W: Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        writer.write_all(&(self.name_id.to_be_bytes()))?;
+
+        writer.write_all(
+            &(TryInto::<u32>::try_into(<DataType as Clone>::clone(&self.base))
+                .map_err(|_| ErrorKind::InvalidInput)?)
+            .to_be_bytes(),
+        )?;
+
+        writer.write_all(&(self.size.to_be_bytes()))
+    }
+}
+
 impl From<&[u8]> for PascalSet {
     fn from(value: &[u8]) -> Self {
         let name = convert_be_u32(&value[0..4].try_into().unwrap());
@@ -529,6 +701,20 @@ impl Deref for PascalEnum {
     }
 }
 
+impl Serializable for PascalEnum {
+    fn serialize_out<W: Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        writer.write_all(&(self.name_id.to_be_bytes()))?;
+
+        writer.write_all(&(self.len() as u32).to_be_bytes())?;
+
+        for m in self.iter() {
+            writer.write_all(&m.to_be_bytes())?;
+        }
+
+        Ok(())
+    }
+}
+
 impl From<&[u8]> for PascalEnum {
     fn from(value: &[u8]) -> Self {
         let mut data = value;
@@ -562,6 +748,13 @@ impl RawLength for PascalEnum {
 pub struct PascalString {
     size: u32,
     name_id: u32,
+}
+
+impl Serializable for PascalString {
+    fn serialize_out<W: Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        writer.write_all(&(self.size.to_be_bytes()))?;
+        writer.write_all(&(self.name_id.to_be_bytes()))
+    }
 }
 
 impl From<&[u8]> for PascalString {
