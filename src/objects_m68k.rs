@@ -53,7 +53,7 @@ impl NameEntry {
         }
     }
 
-    pub fn name(&self) -> &String {
+    pub fn name(&self) -> &str {
         &self.name
     }
 
@@ -66,23 +66,40 @@ impl NameEntry {
     }
 }
 
+#[repr(i8)]
+#[derive(Debug, Clone)]
+pub enum BaseRegister {
+    Unknown = -1,
+    BaseRegA4 = 4,
+    BaseRegA5 = 5,
+}
+
+impl From<u8> for BaseRegister {
+    fn from(value: u8) -> Self {
+        match value {
+            4 => BaseRegister::BaseRegA4,
+            5 => BaseRegister::BaseRegA5,
+            _ => BaseRegister::Unknown,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct MetrowerksObject {
     /* header */
-    version: u16, /* always OBJ_VERSION */
     flags: ObjectFlags,
-    reserved1: u32,       /* Reserved by Metrowerks */
-    old_def_version: u32, /* CFM68k flag, For object code that doesn’t define a CFM68K shared library, this field contains 0L */
-    old_imp_version: u32, /* CFM68k flag, For object code that doesn’t define a CFM68K shared library, this field contains 0L */
-    current_version: u32, /* CFM68k flag, For object code that doesn’t define a CFM68K shared library, this field contains 0L */
-    has_flags: u8,        /* Reserved by Metrowerks. */
-    is_pascal: u8,        /* Reserved by Metrowerks. */
-    is_fourbyteint: u8,   /* Reserved by Metrowerks. */
-    is_eightdouble: u8,   /* Reserved by Metrowerks. */
-    is_mc68881: u8,       /* Reserved by Metrowerks. */
-    basereg: u8,          /* Reserved by Metrowerks. */
-    reserved3: u8,        /* Reserved by Metrowerks. This field must contain the value 0L. */
-    reserved4: u8,        /* Reserved by Metrowerks. This field must contain the value 0L. */
+    reserved1: u32,        /* Reserved by Metrowerks */
+    old_def_version: u32,  /* CFM68k: Version Info: Old Definition */
+    old_imp_version: u32,  /* CFM68k: Version Info: Old Implmentation */
+    current_version: u32,  /* CFM68k: Version Info: Current Version */
+    has_flags: bool,       /* Reserved by Metrowerks. */
+    is_pascal: bool,       /* Reserved by Metrowerks. */
+    is_fourbyteint: bool,  /* 68K Processor: 4-Byte Ints */
+    is_eightdouble: bool,  /* 68K Processor: 8-Byte Doubles */
+    is_mc68881: bool,      /* 68K Processor: Floating Point: 68881 */
+    basereg: BaseRegister, /* 68K Target: Library Info: A4, A5 relative data */
+    reserved3: u8,         /* Reserved by Metrowerks. This field must contain the value 0L. */
+    reserved4: u8,         /* Reserved by Metrowerks. This field must contain the value 0L. */
 
     names: Vec<NameEntry>,
     symtab: SymbolTable,
@@ -128,18 +145,17 @@ impl AsMut<SymbolTable> for MetrowerksObject {
 impl Default for MetrowerksObject {
     fn default() -> Self {
         Self {
-            version: 0,
             flags: ObjectFlags::empty(),
             reserved1: 0,
             old_def_version: 0,
             old_imp_version: 0,
             current_version: 0,
-            has_flags: 0,
-            is_pascal: 0,
-            is_fourbyteint: 0,
-            is_eightdouble: 0,
-            is_mc68881: 0,
-            basereg: 0,
+            has_flags: false,
+            is_pascal: false,
+            is_fourbyteint: false,
+            is_eightdouble: false,
+            is_mc68881: false,
+            basereg: BaseRegister::Unknown,
             reserved3: 0,
             reserved4: 0,
 
@@ -199,36 +215,32 @@ impl MetrowerksObject {
         self.current_version
     }
 
-    pub fn version(&self) -> u16 {
-        self.version
-    }
-
     pub fn flags(&self) -> ObjectFlags {
         self.flags
     }
 
-    pub fn has_flags(&self) -> u8 {
+    pub fn has_flags(&self) -> bool {
         self.has_flags
     }
 
-    pub fn is_pascal(&self) -> u8 {
+    pub fn is_pascal(&self) -> bool {
         self.is_pascal
     }
 
-    pub fn is_fourbyteint(&self) -> u8 {
+    pub fn is_fourbyteint(&self) -> bool {
         self.is_fourbyteint
     }
 
-    pub fn is_eightdouble(&self) -> u8 {
+    pub fn is_eightdouble(&self) -> bool {
         self.is_eightdouble
     }
 
-    pub fn is_mc68881(&self) -> u8 {
+    pub fn is_mc68881(&self) -> bool {
         self.is_mc68881
     }
 
-    pub fn basereg(&self) -> u8 {
-        self.basereg
+    pub fn basereg(&self) -> &BaseRegister {
+        &self.basereg
     }
 
     pub fn reserved3(&self) -> u8 {
@@ -237,6 +249,63 @@ impl MetrowerksObject {
 
     pub fn reserved4(&self) -> u8 {
         self.reserved4
+    }
+
+    pub fn new(hunks: &CodeHunks, symtab: &SymbolTable) -> MetrowerksObject {
+        MetrowerksObject {
+            flags: ObjectFlags::empty(),
+            reserved1: 0,
+            old_def_version: 0,
+            old_imp_version: 0,
+            current_version: 0,
+            has_flags: false,
+            is_pascal: false,
+            is_fourbyteint: false,
+            is_eightdouble: false,
+            is_mc68881: false,
+            basereg: BaseRegister::Unknown,
+            reserved3: 0,
+            reserved4: 0,
+            names: vec![],
+            symtab: symtab.to_owned(),
+            hunks: hunks.to_owned(),
+        }
+    }
+
+    pub fn set_eightdouble(&mut self, arg: bool) {
+        self.is_eightdouble = arg;
+    }
+
+    pub fn set_fourbyteint(&mut self, arg: bool) {
+        self.is_fourbyteint = arg;
+    }
+
+    pub fn set_basereg(&mut self, base_reg: BaseRegister) {
+        self.basereg = base_reg;
+    }
+
+    pub fn set_current_version(&mut self, arg: u32) {
+        self.current_version = arg;
+    }
+
+    pub fn set_old_def_version(&mut self, arg: u32) {
+        self.old_def_version = arg;
+    }
+
+    pub fn set_old_imp_version(&mut self, arg: u32) {
+        self.old_imp_version = arg;
+    }
+
+    pub fn set_mc68881(&mut self, arg: bool) {
+        self.is_mc68881 = arg;
+    }
+
+    pub fn set_has_flags(&mut self, arg: bool) {
+        self.has_flags = arg;
+    }
+
+    pub fn set_object_flags(&mut self, arg: ObjectFlags) {
+        self.flags = arg;
     }
 }
 
@@ -255,6 +324,10 @@ impl TryFrom<&[u8]> for MetrowerksObject {
         }
 
         let version = util::convert_be_u16(&value[4..6].try_into().unwrap());
+        if version != 0 {
+            return Err(format!("Version is not 0L, got {}", version));
+        }
+
         let flags = ObjectFlags::from_bits(util::convert_be_u16(&value[6..8].try_into().unwrap()));
         let obj_size = util::convert_be_u32(&value[8..12].try_into().unwrap());
         let nametable_offset = util::convert_be_u32(&value[12..16].try_into().unwrap());
@@ -281,7 +354,7 @@ impl TryFrom<&[u8]> for MetrowerksObject {
         let is_fourbyteint = value[58];
         let is_eightdouble = value[59];
         let is_mc68881 = value[60];
-        let basereg = value[61];
+        let basereg = BaseRegister::from(value[61]);
 
         let reserved3 = value[62];
         if reserved3 != 0 {
@@ -353,17 +426,16 @@ impl TryFrom<&[u8]> for MetrowerksObject {
         assert_eq!(udata_size as usize, code_objects.udata_length());
 
         let mwob = MetrowerksObject {
-            version: version,
             flags: flags.unwrap(),
             reserved1: reserved1,
             old_def_version: old_def_version,
             old_imp_version: old_imp_version,
             current_version: current_version,
-            has_flags: has_flags,
-            is_pascal: is_pascal,
-            is_fourbyteint: is_fourbyteint,
-            is_eightdouble: is_eightdouble,
-            is_mc68881: is_mc68881,
+            has_flags: has_flags != 0,
+            is_pascal: is_pascal != 0,
+            is_fourbyteint: is_fourbyteint != 0,
+            is_eightdouble: is_eightdouble != 0,
+            is_mc68881: is_mc68881 != 0,
             basereg: basereg,
             reserved3: reserved3,
             reserved4: reserved4,
