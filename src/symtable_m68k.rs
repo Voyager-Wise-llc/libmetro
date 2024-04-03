@@ -1,3 +1,4 @@
+use std::borrow::{Borrow, BorrowMut};
 use std::fmt::Debug;
 
 use crate::types_m68k::TypeTable;
@@ -5,7 +6,7 @@ use crate::util::{convert_be_i32, RawLength};
 
 use super::types_m68k::{DataType, TypeDefinition};
 
-use super::util::{convert_be_u16, convert_be_u32, NameIdFromObject};
+use super::util::{convert_be_u16, convert_be_u32};
 
 #[derive(PartialEq)]
 pub enum SymTableMagicWord {
@@ -19,6 +20,13 @@ pub struct StatementLocation {
 }
 
 impl StatementLocation {
+    pub fn new(offset: i32, source_offset: u32) -> Self {
+        Self {
+            offset,
+            source_offset,
+        }
+    }
+
     pub fn is_end_of_list(&self) -> bool {
         self.offset == -1
     }
@@ -97,7 +105,7 @@ impl TryFrom<u8> for StorageClass {
     }
 }
 
-#[derive(NameIdFromObject, Debug, Clone)]
+#[derive(Debug, Clone)]
 pub struct LocalVar {
     name_id: u32,
     var_type: DataType,
@@ -144,6 +152,22 @@ impl LocalVar {
     fn raw_length(&self) -> usize {
         14
     }
+
+    pub fn new(
+        name_id: u32,
+        typ: DataType,
+        kind: StorageKind,
+        sclass: StorageClass,
+        offset: u32,
+    ) -> LocalVar {
+        Self {
+            name_id,
+            var_type: typ,
+            kind: kind,
+            sclass: sclass,
+            wher: offset,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -158,6 +182,16 @@ pub struct Routine {
     typ: RoutineType,
     statement_locations: Vec<StatementLocation>,
     local_vars: Vec<LocalVar>,
+}
+
+impl Default for Routine {
+    fn default() -> Self {
+        Self {
+            typ: RoutineType::Unknown,
+            statement_locations: vec![],
+            local_vars: vec![],
+        }
+    }
 }
 
 impl TryFrom<&[u8]> for Routine {
@@ -207,7 +241,43 @@ impl TryFrom<&[u8]> for Routine {
     }
 }
 
+impl AsRef<[StatementLocation]> for Routine {
+    fn as_ref(&self) -> &[StatementLocation] {
+        &self.statement_locations
+    }
+}
+
+impl AsMut<Vec<StatementLocation>> for Routine {
+    fn as_mut(&mut self) -> &mut Vec<StatementLocation> {
+        &mut self.statement_locations
+    }
+}
+
+impl AsRef<[LocalVar]> for Routine {
+    fn as_ref(&self) -> &[LocalVar] {
+        &self.local_vars
+    }
+}
+
+impl AsMut<Vec<LocalVar>> for Routine {
+    fn as_mut(&mut self) -> &mut Vec<LocalVar> {
+        &mut self.local_vars
+    }
+}
+
 impl Routine {
+    pub fn new_func() -> Routine {
+        let mut s = Self::default();
+        s.typ = RoutineType::Function;
+        s
+    }
+
+    pub fn new_procedure() -> Routine {
+        let mut s = Self::default();
+        s.typ = RoutineType::Procedure;
+        s
+    }
+
     pub fn statement_locations(&self) -> &[StatementLocation] {
         self.statement_locations.as_slice()
     }
@@ -258,12 +328,63 @@ impl RawLength for SymbolTable {
     }
 }
 
+impl AsRef<[Routine]> for SymbolTable {
+    fn as_ref(&self) -> &[Routine] {
+        &self.routines.as_ref()
+    }
+}
+
+impl AsMut<Vec<Routine>> for SymbolTable {
+    fn as_mut(&mut self) -> &mut Vec<Routine> {
+        self.routines.as_mut()
+    }
+}
+
+impl AsRef<[TypeDefinition]> for SymbolTable {
+    fn as_ref(&self) -> &[TypeDefinition] {
+        &self.types.as_ref()
+    }
+}
+
+impl AsMut<Vec<TypeDefinition>> for SymbolTable {
+    fn as_mut(&mut self) -> &mut Vec<TypeDefinition> {
+        self.types.as_mut()
+    }
+}
+
+impl Default for SymbolTable {
+    fn default() -> Self {
+        Self {
+            unnamed: 0,
+            reserved: [0, 0, 0, 0],
+            routines: vec![],
+            types: TypeTable::default(),
+        }
+    }
+}
+
 impl SymbolTable {
     pub fn routines(&self) -> &[Routine] {
         &self.routines
     }
     pub fn types(&self) -> &[TypeDefinition] {
         &self.types
+    }
+
+    pub fn borrow_routines(&self) -> &Vec<Routine> {
+        self.routines.borrow()
+    }
+
+    pub fn borrow_routines_mut(&mut self) -> &mut Vec<Routine> {
+        self.routines.borrow_mut()
+    }
+
+    pub fn borrow_types(&self) -> &Vec<TypeDefinition> {
+        self.types.borrow()
+    }
+
+    pub fn borrow_types_mut(&mut self) -> &mut Vec<TypeDefinition> {
+        self.types.borrow_mut()
     }
 
     pub fn routine_at_offset(&self, offset: usize) -> &Routine {
@@ -340,5 +461,43 @@ impl TryFrom<&[u8]> for SymbolTable {
             routines: routines,
             types: type_table,
         })
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use crate::types_m68k::{PascalString, TypeDefinition, TypeTable};
+
+    use super::SymbolTable;
+
+    #[test]
+    fn add_type_def_to_symtab() {
+        let mut st = SymbolTable {
+            unnamed: 0,
+            reserved: [0, 0, 0, 0],
+            routines: vec![],
+            types: TypeTable::default(),
+        };
+
+        assert_eq!(st.types().len(), 0);
+        {
+            let types = st.borrow_types_mut();
+
+            types.push(TypeDefinition::new(
+                crate::types_m68k::OtherDataType::Undefined,
+                1234,
+            ));
+        }
+
+        assert_eq!(st.types().len(), 1);
+
+        {
+            let types = st.borrow_types_mut();
+            types.push(TypeDefinition::new(
+                crate::types_m68k::OtherDataType::TypePascalString(PascalString::new(32, 1)),
+                1235,
+            ));
+        }
+        assert_eq!(st.types().len(), 2);
     }
 }

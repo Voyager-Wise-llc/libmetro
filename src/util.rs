@@ -31,7 +31,7 @@ pub fn nametable_hash(name: &str) -> u16 {
         u = 0;
         for c in s.iter() {
             u = (u >> 3) | (u << 5);
-            u += *c;
+            u = u.wrapping_add(*c);
         }
         hashval = (hashval << 8) | (u as u16);
     }

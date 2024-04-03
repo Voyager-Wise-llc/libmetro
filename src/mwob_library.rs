@@ -209,10 +209,10 @@ mod tests {
 
             assert_eq!(
                 1,
-                ob.symbols().unwrap().routines().len(),
+                ob.symbols().routines().len(),
                 "Wrong number of routines, expected: {}, got: {}",
                 1,
-                ob.symbols().unwrap().routines().len()
+                ob.symbols().routines().len()
             );
 
             assert_eq!(
@@ -248,10 +248,10 @@ mod tests {
 
             assert_eq!(
                 2,
-                ob.symbols().unwrap().routines().len(),
+                ob.symbols().routines().len(),
                 "Wrong number of routines, expected: {}, got: {}",
                 2,
-                ob.symbols().unwrap().routines().len()
+                ob.symbols().routines().len()
             );
 
             assert_eq!(
@@ -287,10 +287,10 @@ mod tests {
 
             assert_eq!(
                 1,
-                ob.symbols().unwrap().routines().len(),
+                ob.symbols().routines().len(),
                 "Wrong number of routines, expected: {}, got: {}",
                 1,
-                ob.symbols().unwrap().routines().len()
+                ob.symbols().routines().len()
             );
 
             assert_eq!(
