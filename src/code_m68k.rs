@@ -2,7 +2,10 @@ use std::ops::{Deref, DerefMut};
 
 use chrono::{DateTime, Local};
 
-use crate::util::{from_mac_datetime, RawLength};
+use crate::{
+    objects_m68k::{MetrowerksObject, NameEntry},
+    util::{from_mac_datetime, Lookup, RawLength},
+};
 
 use super::util::{convert_be_u16, convert_be_u32};
 
@@ -39,6 +42,12 @@ pub struct ObjCodeHunk {
     sym_decl_offset: u32,
     special_flag: ObjCodeFlag,
     code: Vec<u8>,
+}
+
+impl<'b> Lookup<'b, NameEntry, MetrowerksObject> for ObjCodeHunk {
+    fn get_reference(&self, index: &'b MetrowerksObject) -> Option<&'b NameEntry> {
+        index.names().iter().find(|x| x.id() == self.name_id)
+    }
 }
 
 impl Deref for ObjCodeHunk {
@@ -112,6 +121,12 @@ pub struct ObjDataHunk {
     data: Vec<u8>,
 }
 
+impl<'b> Lookup<'b, NameEntry, MetrowerksObject> for ObjDataHunk {
+    fn get_reference(&self, index: &'b MetrowerksObject) -> Option<&'b NameEntry> {
+        index.names().iter().find(|x| x.id() == self.name_id)
+    }
+}
+
 impl RawLength for ObjDataHunk {
     fn raw_length(&self) -> usize {
         34 + self.data.len()
@@ -140,6 +155,12 @@ impl ObjDataHunk {
 pub struct ObjEntryHunk {
     name_id: u32,
     offset: u32,
+}
+
+impl<'b> Lookup<'b, NameEntry, MetrowerksObject> for ObjEntryHunk {
+    fn get_reference(&self, index: &'b MetrowerksObject) -> Option<&'b NameEntry> {
+        index.names().iter().find(|x| x.id() == self.name_id)
+    }
 }
 
 impl RawLength for ObjEntryHunk {
@@ -180,6 +201,12 @@ impl ObjXRefPair {
 pub struct ObjXRefHunk {
     name_id: u32,
     pairs: Vec<ObjXRefPair>,
+}
+
+impl<'b> Lookup<'b, NameEntry, MetrowerksObject> for ObjXRefHunk {
+    fn get_reference(&self, index: &'b MetrowerksObject) -> Option<&'b NameEntry> {
+        index.names().iter().find(|x| x.id() == self.name_id)
+    }
 }
 
 impl RawLength for ObjXRefHunk {
@@ -223,6 +250,12 @@ pub struct ObjContainerHunk {
     current_version: u32,
 }
 
+impl<'b> Lookup<'b, NameEntry, MetrowerksObject> for ObjContainerHunk {
+    fn get_reference(&self, index: &'b MetrowerksObject) -> Option<&'b NameEntry> {
+        index.names().iter().find(|x| x.id() == self.name_id)
+    }
+}
+
 impl RawLength for ObjContainerHunk {
     fn raw_length(&self) -> usize {
         18
@@ -248,6 +281,12 @@ pub struct ObjImportHunk {
     name_id: u32,
 }
 
+impl<'b> Lookup<'b, NameEntry, MetrowerksObject> for ObjImportHunk {
+    fn get_reference(&self, index: &'b MetrowerksObject) -> Option<&'b NameEntry> {
+        index.names().iter().find(|x| x.id() == self.name_id)
+    }
+}
+
 impl RawLength for ObjImportHunk {
     fn raw_length(&self) -> usize {
         6
@@ -258,6 +297,18 @@ impl RawLength for ObjImportHunk {
 pub struct DataPointerHunk {
     name_id: u32,
     data_name: u32,
+}
+
+impl<'b> Lookup<'b, NameEntry, MetrowerksObject> for DataPointerHunk {
+    fn get_reference(&self, index: &'b MetrowerksObject) -> Option<&'b NameEntry> {
+        index.names().iter().find(|x| x.id() == self.name_id)
+    }
+}
+
+impl<'b> DataPointerHunk {
+    pub fn get_data_reference(&self, index: &'b MetrowerksObject) -> Option<&'b NameEntry> {
+        index.names().iter().find(|x| x.id() == self.data_name)
+    }
 }
 
 impl RawLength for DataPointerHunk {
@@ -278,6 +329,18 @@ pub struct XPointerHunk {
     xvector_name: u32,
 }
 
+impl<'b> Lookup<'b, NameEntry, MetrowerksObject> for XPointerHunk {
+    fn get_reference(&self, index: &'b MetrowerksObject) -> Option<&'b NameEntry> {
+        index.names().iter().find(|x| x.id() == self.name_id)
+    }
+}
+
+impl<'b> XPointerHunk {
+    pub fn get_data_reference(&self, index: &'b MetrowerksObject) -> Option<&'b NameEntry> {
+        index.names().iter().find(|x| x.id() == self.xvector_name)
+    }
+}
+
 impl RawLength for XPointerHunk {
     fn raw_length(&self) -> usize {
         10
@@ -294,6 +357,18 @@ impl XPointerHunk {
 pub struct XVectorHunk {
     name_id: u32,
     function_name: u32,
+}
+
+impl<'b> Lookup<'b, NameEntry, MetrowerksObject> for XVectorHunk {
+    fn get_reference(&self, index: &'b MetrowerksObject) -> Option<&'b NameEntry> {
+        index.names().iter().find(|x| x.id() == self.name_id)
+    }
+}
+
+impl<'b> XVectorHunk {
+    pub fn get_data_reference(&self, index: &'b MetrowerksObject) -> Option<&'b NameEntry> {
+        index.names().iter().find(|x| x.id() == self.function_name)
+    }
 }
 
 impl RawLength for XVectorHunk {
@@ -314,6 +389,12 @@ pub struct ObjSourceHunk {
     moddate: DateTime<Local>, //u32
 }
 
+impl<'b> Lookup<'b, NameEntry, MetrowerksObject> for ObjSourceHunk {
+    fn get_reference(&self, index: &'b MetrowerksObject) -> Option<&'b NameEntry> {
+        index.names().iter().find(|x| x.id() == self.name_id)
+    }
+}
+
 impl RawLength for ObjSourceHunk {
     fn raw_length(&self) -> usize {
         10
@@ -331,6 +412,12 @@ pub struct ObjSegHunk {
     name_id: u32,
 }
 
+impl<'b> Lookup<'b, NameEntry, MetrowerksObject> for ObjSegHunk {
+    fn get_reference(&self, index: &'b MetrowerksObject) -> Option<&'b NameEntry> {
+        index.names().iter().find(|x| x.id() == self.name_id)
+    }
+}
+
 impl RawLength for ObjSegHunk {
     fn raw_length(&self) -> usize {
         6
@@ -341,6 +428,12 @@ impl RawLength for ObjSegHunk {
 pub struct ObjMethHunk {
     name_id: u32,
     size: u32,
+}
+
+impl<'b> Lookup<'b, NameEntry, MetrowerksObject> for ObjMethHunk {
+    fn get_reference(&self, index: &'b MetrowerksObject) -> Option<&'b NameEntry> {
+        index.names().iter().find(|x| x.id() == self.name_id)
+    }
 }
 
 impl RawLength for ObjMethHunk {
@@ -382,6 +475,12 @@ pub struct ObjClassHunk {
     name_id: u32,
     methods: u16,
     pairs: Vec<ObjClassPair>,
+}
+
+impl<'b> Lookup<'b, NameEntry, MetrowerksObject> for ObjClassHunk {
+    fn get_reference(&self, index: &'b MetrowerksObject) -> Option<&'b NameEntry> {
+        index.names().iter().find(|x| x.id() == self.name_id)
+    }
 }
 
 impl RawLength for ObjClassHunk {
@@ -810,6 +909,7 @@ impl TryFrom<u16> for HunkParseState {
 pub struct CodeHunks {
     hunks: Vec<Hunk>,
 }
+
 impl CodeHunks {
     /// Creates a new [`CodeHunks`] with a Start and End hunk.
     pub fn new() -> Self {
@@ -1422,5 +1522,36 @@ impl TryFrom<&[u8]> for CodeHunks {
         }
 
         Ok(CodeHunks { hunks: hunks })
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use crate::objects_m68k::*;
+    use crate::symtable_m68k::*;
+    use crate::util::Lookup;
+
+    use super::CodeHunks;
+    use super::ObjCodeHunk;
+
+    #[test]
+    fn test_lookup() {
+        let mwob = {
+            let mut mwob = MetrowerksObject::new(&CodeHunks::default(), &SymbolTable::default());
+
+            // Add names
+            {
+                let names: &mut Vec<NameEntry> = mwob.as_mut();
+                names.push(NameEntry::new(1, "add"));
+                names.push(NameEntry::new(2, "a"));
+                names.push(NameEntry::new(3, "b"));
+            }
+
+            mwob
+        };
+        let code = ObjCodeHunk::new(1, 32, 123, super::ObjCodeFlag::None, &vec![]);
+
+        let ne: &NameEntry = code.get_reference(&mwob).unwrap();
+        assert_eq!("add", ne.name());
     }
 }

@@ -2,6 +2,10 @@ use crate::objects_m68k::MetrowerksObject;
 use chrono::{DateTime, Local, NaiveDate, TimeZone, Utc};
 use std::{collections::VecDeque, io, io::Write, sync::Once};
 
+pub trait Lookup<'b, Target, Via> {
+    fn get_reference(&self, index: &'b Via) -> Option<&'b Target>;
+}
+
 pub trait Serializable: for<'a> TryFrom<&'a [u8]> {
     fn serialize_out<W: Write>(&self, writer: &mut W) -> io::Result<()>;
 
