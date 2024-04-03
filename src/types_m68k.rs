@@ -4,6 +4,11 @@ use std::{
     ops::{Deref, DerefMut, Range},
 };
 
+use crate::{
+    objects_m68k::{MetrowerksObject, NameEntry},
+    util::Lookup,
+};
+
 use super::util::{convert_be_u16, convert_be_u32, RawLength, Serializable};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -269,36 +274,23 @@ impl RawLength for Array {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct StructMember {
-    name: u32,
+    name_id: u32,
     typ: DataType,
     offset: u32,
 }
 
-impl Clone for StructMember {
-    fn clone(&self) -> Self {
-        Self {
-            name: self.name.clone(),
-            typ: self.typ.clone(),
-            offset: self.offset.clone(),
-        }
-    }
-}
-
-impl Debug for StructMember {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("StructMember")
-            .field("name(refval)", &self.name)
-            .field("typ", &self.typ)
-            .field("offset", &self.offset)
-            .finish()
+impl<'b> Lookup<'b, NameEntry, MetrowerksObject> for StructMember {
+    fn get_reference(&self, index: &'b MetrowerksObject) -> Option<&'b NameEntry> {
+        index.names().iter().find(|x| x.id() == self.name_id)
     }
 }
 
 impl StructMember {
     pub fn new(name_id: u32, typ: DataType, offset: u32) -> Self {
         Self {
-            name: name_id,
+            name_id: name_id,
             typ,
             offset,
         }
@@ -325,7 +317,7 @@ impl From<&[u8]> for StructMember {
         let typ = convert_be_u32(&value[4..8].try_into().unwrap());
         let offset = convert_be_u32(&value[8..12].try_into().unwrap());
         StructMember {
-            name: name,
+            name_id: name,
             typ: DataType::from(typ),
             offset: offset,
         }
@@ -334,7 +326,7 @@ impl From<&[u8]> for StructMember {
 
 impl Serializable for StructMember {
     fn serialize_out<W: Write>(&self, writer: &mut W) -> std::io::Result<()> {
-        writer.write_all(&(self.name.to_be_bytes()))?;
+        writer.write_all(&(self.name_id.to_be_bytes()))?;
 
         writer.write_all(
             &(TryInto::<u32>::try_into(<DataType as Clone>::clone(&self.typ))
@@ -350,6 +342,12 @@ pub struct Struct {
     name_id: u32,
     size: u32,
     members: Vec<StructMember>,
+}
+
+impl<'b> Lookup<'b, NameEntry, MetrowerksObject> for Struct {
+    fn get_reference(&self, index: &'b MetrowerksObject) -> Option<&'b NameEntry> {
+        index.names().iter().find(|x| x.id() == self.name_id)
+    }
 }
 
 impl Deref for Struct {
@@ -420,6 +418,12 @@ pub struct EnumMember {
     value: u32,
 }
 
+impl<'b> Lookup<'b, NameEntry, MetrowerksObject> for EnumMember {
+    fn get_reference(&self, index: &'b MetrowerksObject) -> Option<&'b NameEntry> {
+        index.names().iter().find(|x| x.id() == self.name_id)
+    }
+}
+
 impl EnumMember {
     pub fn new(name_id: u32, value: u32) -> Self {
         Self { name_id, value }
@@ -459,6 +463,12 @@ pub struct Enum {
     name_id: u32,
     typ: DataType,
     members: Vec<EnumMember>,
+}
+
+impl<'b> Lookup<'b, NameEntry, MetrowerksObject> for Enum {
+    fn get_reference(&self, index: &'b MetrowerksObject) -> Option<&'b NameEntry> {
+        index.names().iter().find(|x| x.id() == self.name_id)
+    }
 }
 
 impl Deref for Enum {
@@ -554,6 +564,12 @@ pub struct PascalArray {
     name_id: u32,
 }
 
+impl<'b> Lookup<'b, NameEntry, MetrowerksObject> for PascalArray {
+    fn get_reference(&self, index: &'b MetrowerksObject) -> Option<&'b NameEntry> {
+        index.names().iter().find(|x| x.id() == self.name_id)
+    }
+}
+
 impl Serializable for PascalArray {
     fn serialize_out<W: Write>(&self, writer: &mut W) -> std::io::Result<()> {
         writer.write_all(&(self.packed as u32).to_be_bytes())?;
@@ -627,6 +643,12 @@ pub struct PascalRange {
     size: u32,
     lower: u32,
     upper: u32,
+}
+
+impl<'b> Lookup<'b, NameEntry, MetrowerksObject> for PascalRange {
+    fn get_reference(&self, index: &'b MetrowerksObject) -> Option<&'b NameEntry> {
+        index.names().iter().find(|x| x.id() == self.name_id)
+    }
 }
 
 impl Serializable for PascalRange {
@@ -709,6 +731,12 @@ pub struct PascalSet {
     size: u32,
 }
 
+impl<'b> Lookup<'b, NameEntry, MetrowerksObject> for PascalSet {
+    fn get_reference(&self, index: &'b MetrowerksObject) -> Option<&'b NameEntry> {
+        index.names().iter().find(|x| x.id() == self.name_id)
+    }
+}
+
 impl Serializable for PascalSet {
     fn serialize_out<W: Write>(&self, writer: &mut W) -> std::io::Result<()> {
         writer.write_all(&(self.name_id.to_be_bytes()))?;
@@ -765,6 +793,12 @@ impl RawLength for PascalSet {
 pub struct PascalEnum {
     name_id: u32,
     members: Vec<u32>,
+}
+
+impl<'b> Lookup<'b, NameEntry, MetrowerksObject> for PascalEnum {
+    fn get_reference(&self, index: &'b MetrowerksObject) -> Option<&'b NameEntry> {
+        index.names().iter().find(|x| x.id() == self.name_id)
+    }
 }
 
 impl PascalEnum {
@@ -828,6 +862,12 @@ impl RawLength for PascalEnum {
 pub struct PascalString {
     size: u32,
     name_id: u32,
+}
+
+impl<'b> Lookup<'b, NameEntry, MetrowerksObject> for PascalString {
+    fn get_reference(&self, index: &'b MetrowerksObject) -> Option<&'b NameEntry> {
+        index.names().iter().find(|x| x.id() == self.name_id)
+    }
 }
 
 impl Serializable for PascalString {

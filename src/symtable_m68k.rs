@@ -1,8 +1,9 @@
 use std::borrow::{Borrow, BorrowMut};
 use std::fmt::Debug;
 
+use crate::objects_m68k::{MetrowerksObject, NameEntry};
 use crate::types_m68k::TypeTable;
-use crate::util::{convert_be_i32, RawLength};
+use crate::util::{convert_be_i32, Lookup, RawLength};
 
 use super::types_m68k::{DataType, TypeDefinition};
 
@@ -112,6 +113,12 @@ pub struct LocalVar {
     kind: StorageKind,
     sclass: StorageClass,
     wher: u32, // TODO: Integrate this into the sclass
+}
+
+impl<'b> Lookup<'b, NameEntry, MetrowerksObject> for LocalVar {
+    fn get_reference(&self, index: &'b MetrowerksObject) -> Option<&'b NameEntry> {
+        index.names().iter().find(|x| x.id() == self.name_id)
+    }
 }
 
 impl From<&[u8]> for LocalVar {
@@ -411,6 +418,15 @@ impl SymbolTable {
     pub fn num_unnamed(&self) -> u32 {
         self.unnamed
     }
+
+    pub fn new() -> Self {
+        Self {
+            unnamed: 0,
+            reserved: [0, 0, 0, 0],
+            routines: vec![],
+            types: TypeTable::default(),
+        }
+    }
 }
 
 impl TryFrom<&[u8]> for SymbolTable {
@@ -498,6 +514,7 @@ mod test {
                 1235,
             ));
         }
+
         assert_eq!(st.types().len(), 2);
     }
 }
