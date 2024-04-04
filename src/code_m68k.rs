@@ -1,9 +1,13 @@
-use std::ops::{Deref, DerefMut};
+use std::{
+    ops::{Deref, DerefMut},
+    rc::{Rc, Weak},
+};
 
 use chrono::{DateTime, Local};
 
 use crate::{
     objects_m68k::{MetrowerksObject, NameEntry},
+    symtable_m68k::Routine,
     util::{from_mac_datetime, RawLength},
 };
 
@@ -39,6 +43,7 @@ pub enum ObjCodeFlag {
 pub struct ObjCodeHunk {
     name_id: u32,
     sym_offset: u32,
+    routine: Option<Weak<Routine>>,
     sym_decl_offset: u32,
     special_flag: ObjCodeFlag,
     code: Vec<u8>,
@@ -59,11 +64,15 @@ impl RawLength for ObjCodeHunk {
 }
 
 impl ObjCodeHunk {
-    pub fn has_symtab(&self) -> bool {
+    pub(super) fn has_symtab(&self) -> bool {
         self.sym_offset != 0x80000000
     }
 
-    pub fn sym_decl_offset(&self) -> u32 {
+    pub(super) fn symtab_offset(&self) -> u32 {
+        self.sym_offset
+    }
+
+    pub fn source_offset(&self) -> u32 {
         self.sym_decl_offset
     }
 
@@ -71,19 +80,34 @@ impl ObjCodeHunk {
         self.special_flag
     }
 
-    pub fn new(
-        name_id: u32,
-        symtab_offset: u32,
-        sym_decl_offset: u32,
-        flags: ObjCodeFlag,
-        code: &[u8],
-    ) -> ObjCodeHunk {
+    pub fn set_routine(&mut self, r: &Rc<Routine>) {
+        let w = Rc::downgrade(r);
+        self.routine = Some(w);
+    }
+
+    pub fn routine(&self) -> Option<Weak<Routine>> {
+        match &self.routine {
+            Some(x) => {
+                let t = x.upgrade().unwrap();
+                let weak = Rc::downgrade(&t);
+                Some(weak)
+            }
+            None => None,
+        }
+    }
+
+    pub fn clear_routine(&mut self) {
+        self.routine = None
+    }
+
+    pub fn new(name_id: u32, sym_decl_offset: u32, flags: ObjCodeFlag, code: &[u8]) -> ObjCodeHunk {
         Self {
             name_id: name_id,
-            sym_offset: symtab_offset,
+            sym_offset: 0,
             sym_decl_offset: sym_decl_offset,
             special_flag: flags,
             code: code.to_vec(),
+            routine: None,
         }
     }
 }
@@ -1001,6 +1025,7 @@ impl TryFrom<&[u8]> for CodeHunks {
                         sym_decl_offset: sym_decl_offset,
                         code: code.to_owned(),
                         special_flag: special,
+                        routine: None,
                     };
 
                     let hunk = match tag {
@@ -1471,7 +1496,7 @@ mod test {
 
             mwob
         };
-        let code = ObjCodeHunk::new(1, 32, 123, super::ObjCodeFlag::None, &vec![]);
+        let code = ObjCodeHunk::new(1, 123, super::ObjCodeFlag::None, &vec![]);
 
         let ne: &NameEntry = code.get_reference(&mwob).unwrap();
         assert_eq!("add", ne.name());

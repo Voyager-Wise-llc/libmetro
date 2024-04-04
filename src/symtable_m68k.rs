@@ -1,5 +1,6 @@
 use std::borrow::{Borrow, BorrowMut};
 use std::fmt::Debug;
+use std::rc::Rc;
 
 use crate::objects_m68k::{MetrowerksObject, NameEntry};
 use crate::types_m68k::TypeTable;
@@ -318,7 +319,7 @@ fn convert_reserved(data: &[u8; 16]) -> [u32; 4] {
 pub struct SymbolTable {
     unnamed: u32, // CVW: This may be resolvable where 'name_id == 0' in type table entries.
     reserved: [u32; 4],
-    routines: Vec<Routine>,
+    routines: Vec<Rc<Routine>>,
     types: TypeTable,
 }
 
@@ -329,14 +330,14 @@ impl RawLength for SymbolTable {
     }
 }
 
-impl AsRef<[Routine]> for SymbolTable {
-    fn as_ref(&self) -> &[Routine] {
+impl AsRef<[Rc<Routine>]> for SymbolTable {
+    fn as_ref(&self) -> &[Rc<Routine>] {
         &self.routines.as_ref()
     }
 }
 
-impl AsMut<Vec<Routine>> for SymbolTable {
-    fn as_mut(&mut self) -> &mut Vec<Routine> {
+impl AsMut<Vec<Rc<Routine>>> for SymbolTable {
+    fn as_mut(&mut self) -> &mut Vec<Rc<Routine>> {
         self.routines.as_mut()
     }
 }
@@ -365,18 +366,18 @@ impl Default for SymbolTable {
 }
 
 impl SymbolTable {
-    pub fn routines(&self) -> &[Routine] {
+    pub fn routines(&self) -> &[Rc<Routine>] {
         &self.routines
     }
     pub fn types(&self) -> &[TypeDefinition] {
         &self.types
     }
 
-    pub fn borrow_routines(&self) -> &Vec<Routine> {
+    pub fn borrow_routines(&self) -> &Vec<Rc<Routine>> {
         self.routines.borrow()
     }
 
-    pub fn borrow_routines_mut(&mut self) -> &mut Vec<Routine> {
+    pub fn borrow_routines_mut(&mut self) -> &mut Vec<Rc<Routine>> {
         self.routines.borrow_mut()
     }
 
@@ -388,7 +389,7 @@ impl SymbolTable {
         self.types.borrow_mut()
     }
 
-    pub fn routine_at_offset(&self, offset: usize) -> &Routine {
+    pub(crate) fn routine_at_offset(&self, offset: usize) -> Option<&Rc<Routine>> {
         let mut i = 0;
         let mut off = offset;
 
@@ -397,12 +398,15 @@ impl SymbolTable {
 
         let mut iter = self.routines.iter();
         while off > 0 {
-            let r = iter.next().unwrap();
+            let r = match iter.next() {
+                Some(r) => r,
+                None => return None,
+            };
             off -= r.raw_length();
             i += 1;
         }
 
-        &self.routines[i]
+        Some(&self.routines[i])
     }
 
     pub fn reserved(&self) -> [u32; 4] {
@@ -445,12 +449,12 @@ impl TryFrom<&[u8]> for SymbolTable {
         // Process Routines
         let routines = if value.len() > 0 {
             let mut routine_bytes = &value[32..];
-            let mut rs: Vec<Routine> = vec![];
+            let mut rs: Vec<Rc<Routine>> = vec![];
             while routine_bytes.len() != 0 {
                 let r: Routine = Routine::try_from(routine_bytes).unwrap();
                 routine_bytes = &routine_bytes[r.raw_length()..];
 
-                rs.push(r);
+                rs.push(Rc::new(r));
             }
             rs
         } else {

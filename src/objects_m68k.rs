@@ -2,6 +2,8 @@ use bitflags::bitflags;
 use core::fmt::Display;
 use std::{ffi::CStr, fmt::Debug};
 
+use crate::code_m68k::HunkType;
+
 use super::{
     code_m68k::{CodeHunks, Hunk},
     symtable_m68k::SymbolTable,
@@ -417,7 +419,33 @@ impl TryFrom<&[u8]> for MetrowerksObject {
 
             let object_bytes = &value[start..end];
 
-            CodeHunks::try_from(object_bytes).unwrap()
+            let mut hunks = CodeHunks::try_from(object_bytes).unwrap();
+
+            for co in hunks.iter_mut() {
+                let obj_code = match co.as_mut() {
+                    HunkType::LocalCode(c) | HunkType::GlobalCode(c) => {
+                        if c.has_symtab() {
+                            Some(c)
+                        } else {
+                            None
+                        }
+                    }
+                    _ => None,
+                };
+
+                match obj_code {
+                    Some(obj) => {
+                        let r = symtab.routine_at_offset(obj.symtab_offset() as usize);
+                        match r {
+                            Some(rout) => obj.set_routine(&rout),
+                            _ => (),
+                        };
+                    }
+                    _ => (),
+                }
+            }
+
+            hunks
         };
 
         // Final parse checks

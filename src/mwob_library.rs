@@ -238,6 +238,7 @@ mod tests {
     use super::*;
     use std::fs::File;
     use std::io::Read;
+    use std::rc::Rc;
 
     #[test]
     fn test_simple_add_library() {
@@ -275,6 +276,27 @@ mod tests {
                 3,
                 ob.hunks().len()
             );
+
+            match ob.hunks().get(1) {
+                Some(hunk) => match hunk.as_ref() {
+                    HunkType::GlobalCode(obj) => match obj.routine() {
+                        Some(x) => {
+                            let rout = x.upgrade().unwrap();
+                            assert!(rout.is_function());
+                            println!("{:#?}", rout);
+                        }
+                        None => {
+                            assert!(false, "No routine attached to ObjCodeHunk");
+                        }
+                    },
+                    _ => {
+                        assert!(false, "No code hunk");
+                    }
+                },
+                None => {
+                    assert!(false, "No code hunk");
+                }
+            }
         }
     }
 
@@ -390,7 +412,8 @@ mod tests {
                 add_routine
             };
 
-            symtab.borrow_routines_mut().push(add_routine);
+            // CVW: This is kludgy
+            symtab.borrow_routines_mut().push(Rc::new(add_routine));
 
             symtab
         };
@@ -401,7 +424,6 @@ mod tests {
             // this already is populated with a start and end hunk
             let add_code = Hunk::new(HunkType::GlobalCode(ObjCodeHunk::new(
                 1,
-                32,
                 173,
                 ObjCodeFlag::None,
                 &[32, 47, 0, 4, 208, 175, 0, 8, 78, 117],
