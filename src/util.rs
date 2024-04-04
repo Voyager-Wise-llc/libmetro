@@ -1,6 +1,18 @@
 use crate::objects_m68k::MetrowerksObject;
 use chrono::{DateTime, Local, NaiveDate, TimeZone, Utc};
-use std::{collections::VecDeque, sync::Once};
+use std::{collections::VecDeque, io, io::Write, sync::Once};
+
+pub trait Lookup<'b, Target, Via> {
+    fn get_reference(&self, index: &'b Via) -> Option<&'b Target>;
+}
+
+pub trait Serializable: for<'a> TryFrom<&'a [u8]> {
+    fn serialize_out<W: Write>(&self, writer: &mut W) -> io::Result<()>;
+
+    fn serialize_in(value: &[u8]) -> Result<Self, <Self as TryFrom<&[u8]>>::Error> {
+        Self::try_from(value)
+    }
+}
 
 pub trait NameIdFromObject<'a>: Sized {
     fn name(&'a self, obj: &'a MetrowerksObject) -> &str;
@@ -23,7 +35,7 @@ pub fn nametable_hash(name: &str) -> u16 {
         u = 0;
         for c in s.iter() {
             u = (u >> 3) | (u << 5);
-            u += *c;
+            u = u.wrapping_add(*c);
         }
         hashval = (hashval << 8) | (u as u16);
     }

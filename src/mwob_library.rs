@@ -37,14 +37,23 @@ pub enum LibraryFlags {
 }
 
 #[derive(Debug, Clone)]
-pub struct FileObject {
+pub struct MetrowerksFileObject {
     moddate: DateTime<Local>,
     file_name: String,
     full_path: String,
     obj: MetrowerksObject,
 }
 
-impl FileObject {
+impl MetrowerksFileObject {
+    pub fn new(file_name: &str, full_path: &str, mwob: MetrowerksObject) -> MetrowerksFileObject {
+        MetrowerksFileObject {
+            moddate: Local::now(),
+            file_name: file_name.to_owned(),
+            full_path: full_path.to_owned(),
+            obj: mwob,
+        }
+    }
+
     pub fn object(&self) -> &MetrowerksObject {
         &self.obj
     }
@@ -53,12 +62,24 @@ impl FileObject {
         self.file_name.as_str()
     }
 
+    pub fn set_filename(&mut self, new_filename: &str) {
+        self.file_name = new_filename.to_owned();
+    }
+
     pub fn fullpath(&self) -> &str {
         self.full_path.as_str()
     }
 
+    pub fn set_fullpath(&mut self, new_full_path: &str) {
+        self.full_path = new_full_path.to_owned();
+    }
+
     pub fn moddate(&self) -> DateTime<Local> {
         self.moddate
+    }
+
+    pub fn set_moddate(&mut self, new_moddate: &DateTime<Local>) {
+        self.moddate = new_moddate.clone();
     }
 }
 
@@ -66,12 +87,11 @@ impl FileObject {
 pub struct MetroWerksLibrary {
     proc: LibraryProcessor,
     flags: LibraryFlags,
-    version: u32,
-    files: Vec<FileObject>,
+    files: Vec<MetrowerksFileObject>,
 }
 
 impl Deref for MetroWerksLibrary {
-    type Target = Vec<FileObject>;
+    type Target = Vec<MetrowerksFileObject>;
 
     fn deref(&self) -> &Self::Target {
         &self.files
@@ -88,7 +108,19 @@ impl MetroWerksLibrary {
     }
 
     pub fn version(&self) -> u32 {
-        self.version
+        match self.proc {
+            LibraryProcessor::Unknown => 0,
+            LibraryProcessor::PowerPC => 1,
+            LibraryProcessor::M68k => 2,
+        }
+    }
+
+    pub fn new(proc: LibraryProcessor, files: &[MetrowerksFileObject]) -> MetroWerksLibrary {
+        MetroWerksLibrary {
+            proc: proc,
+            flags: LibraryFlags::None,
+            files: files.to_vec(),
+        }
     }
 }
 
@@ -116,6 +148,21 @@ impl TryFrom<&[u8]> for MetroWerksLibrary {
         let flags = LibraryFlags::None;
 
         let version = util::convert_be_u32(&value[12..16].try_into().unwrap());
+        if !match version {
+            1 => proc == LibraryProcessor::PowerPC,
+            2 => proc == LibraryProcessor::M68k,
+            _ => false,
+        } {
+            return Err(format!(
+                "Bad version for processor, expected {}, got {}",
+                match proc {
+                    LibraryProcessor::M68k => 2,
+                    LibraryProcessor::PowerPC => 1,
+                    LibraryProcessor::Unknown => 0,
+                },
+                version
+            ));
+        }
 
         let num_files = util::convert_be_u32(&value[24..28].try_into().unwrap());
 
@@ -156,7 +203,7 @@ impl TryFrom<&[u8]> for MetroWerksLibrary {
                 let bytes = &value[data_start..(data_start + data_size)];
                 obj_bytes = &obj_bytes[20..];
 
-                files.push(FileObject {
+                files.push(MetrowerksFileObject {
                     moddate: util::from_mac_datetime(file_moddate).into(),
                     file_name: file_name,
                     full_path: full_path,
@@ -174,7 +221,6 @@ impl TryFrom<&[u8]> for MetroWerksLibrary {
         Ok(MetroWerksLibrary {
             proc: proc,
             flags: flags,
-            version: version,
             files: files,
         })
     }
@@ -182,9 +228,17 @@ impl TryFrom<&[u8]> for MetroWerksLibrary {
 
 #[cfg(test)]
 mod tests {
+    use crate::code_m68k::*;
+    use crate::objects_m68k::BaseRegister;
+    use crate::objects_m68k::NameEntry;
+    use crate::objects_m68k::ObjectFlags;
+    use crate::symtable_m68k::*;
+    use crate::types_m68k::*;
+
     use super::*;
     use std::fs::File;
     use std::io::Read;
+    use std::rc::Rc;
 
     #[test]
     fn test_simple_add_library() {
@@ -209,10 +263,10 @@ mod tests {
 
             assert_eq!(
                 1,
-                ob.symbols().unwrap().routines().len(),
+                ob.symbols().routines().len(),
                 "Wrong number of routines, expected: {}, got: {}",
                 1,
-                ob.symbols().unwrap().routines().len()
+                ob.symbols().routines().len()
             );
 
             assert_eq!(
@@ -222,6 +276,27 @@ mod tests {
                 3,
                 ob.hunks().len()
             );
+
+            match ob.hunks().get(1) {
+                Some(hunk) => match hunk.as_ref() {
+                    HunkType::GlobalCode(obj) => match obj.routine() {
+                        Some(x) => {
+                            let rout = x.upgrade().unwrap();
+                            assert!(rout.is_function());
+                            println!("{:#?}", rout);
+                        }
+                        None => {
+                            assert!(false, "No routine attached to ObjCodeHunk");
+                        }
+                    },
+                    _ => {
+                        assert!(false, "No code hunk");
+                    }
+                },
+                None => {
+                    assert!(false, "No code hunk");
+                }
+            }
         }
     }
 
@@ -248,10 +323,10 @@ mod tests {
 
             assert_eq!(
                 2,
-                ob.symbols().unwrap().routines().len(),
+                ob.symbols().routines().len(),
                 "Wrong number of routines, expected: {}, got: {}",
                 2,
-                ob.symbols().unwrap().routines().len()
+                ob.symbols().routines().len()
             );
 
             assert_eq!(
@@ -287,10 +362,10 @@ mod tests {
 
             assert_eq!(
                 1,
-                ob.symbols().unwrap().routines().len(),
+                ob.symbols().routines().len(),
                 "Wrong number of routines, expected: {}, got: {}",
                 1,
-                ob.symbols().unwrap().routines().len()
+                ob.symbols().routines().len()
             );
 
             assert_eq!(
@@ -301,5 +376,102 @@ mod tests {
                 ob.hunks().len()
             );
         }
+    }
+
+    #[test]
+    fn rebuild_simple_add_and_compare() {
+        // Symbol Table
+        let symtab = {
+            let mut symtab = SymbolTable::new();
+
+            let add_routine = {
+                let mut add_routine = Routine::new_func();
+
+                let lvars: &mut Vec<LocalVar> = add_routine.as_mut();
+                lvars.push(LocalVar::new(
+                    2,
+                    DataType::BasicDataType(BasicDataType::BasicTypeLong),
+                    StorageKind::Value,
+                    StorageClass::A7,
+                    4,
+                ));
+
+                lvars.push(LocalVar::new(
+                    3,
+                    DataType::BasicDataType(BasicDataType::BasicTypeLong),
+                    StorageKind::Value,
+                    StorageClass::A7,
+                    8,
+                ));
+
+                let sloc: &mut Vec<StatementLocation> = add_routine.as_mut();
+                sloc.push(StatementLocation::new(0, 198));
+                sloc.push(StatementLocation::new(8, 211));
+                sloc.push(StatementLocation::new(-1, 211));
+
+                add_routine
+            };
+
+            // CVW: This is kludgy
+            symtab.borrow_routines_mut().push(Rc::new(add_routine));
+
+            symtab
+        };
+
+        let hunks: CodeHunks = {
+            let mut code = CodeHunks::new();
+
+            // this already is populated with a start and end hunk
+            let add_code = Hunk::new(HunkType::GlobalCode({
+                let mut o = ObjCodeHunk::new(
+                    1,
+                    173,
+                    ObjCodeFlag::None,
+                    &[32, 47, 0, 4, 208, 175, 0, 8, 78, 117],
+                );
+                o.set_routine(symtab.routines().first().unwrap());
+                o
+            }));
+
+            code.insert(1, add_code);
+
+            code
+        };
+
+        let mwob = {
+            let mut mwob = MetrowerksObject::new(&hunks, &symtab);
+
+            // Add names
+            {
+                let names: &mut Vec<NameEntry> = mwob.as_mut();
+                names.push(NameEntry::new(1, "add"));
+                names.push(NameEntry::new(2, "a"));
+                names.push(NameEntry::new(3, "b"));
+            }
+
+            // Set feature flags
+            mwob.set_eightdouble(true);
+            mwob.set_fourbyteint(true);
+            mwob.set_basereg(BaseRegister::BaseRegA5);
+            mwob.set_mc68881(false);
+            mwob.set_current_version(0);
+            mwob.set_old_def_version(0);
+            mwob.set_old_imp_version(0);
+            mwob.set_has_flags(true);
+            mwob.set_object_flags(ObjectFlags::empty());
+
+            mwob
+        };
+
+        let mfo = {
+            let mfo =
+                MetrowerksFileObject::new("CW11:Desktop Folder:Test:test:HelloWorld.c", "", mwob);
+
+            mfo
+        };
+
+        let ml = MetroWerksLibrary::new(LibraryProcessor::M68k, &[mfo]);
+
+        println!("{:#?}", ml);
     }
 }

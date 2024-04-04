@@ -8,7 +8,3 @@ pub mod symtable_m68k;
 pub mod types_m68k;
 
 pub mod util;
-
-pub use mwob_library::*;
-
-pub use code_m68k::*;

@@ -1,16 +1,29 @@
-use std::ops::Deref;
+use std::{
+    ops::{Deref, DerefMut},
+    rc::{Rc, Weak},
+};
 
 use chrono::{DateTime, Local};
 
-use crate::util::{from_mac_datetime, RawLength};
+use crate::{
+    objects_m68k::{MetrowerksObject, NameEntry},
+    symtable_m68k::Routine,
+    util::{from_mac_datetime, RawLength},
+};
 
-use super::util::{convert_be_u16, convert_be_u32, NameIdFromObject};
+use super::util::{convert_be_u16, convert_be_u32};
 
 #[derive(Debug, Clone)]
-pub struct ReservedHunk {}
+pub struct ReservedHunk;
+
+impl RawLength for ReservedHunk {
+    fn raw_length(&self) -> usize {
+        0
+    }
+}
 
 #[derive(Debug, Clone)]
-pub struct ObjSimpleHunk {}
+pub struct ObjSimpleHunk;
 
 impl RawLength for ObjSimpleHunk {
     fn raw_length(&self) -> usize {
@@ -26,10 +39,11 @@ pub enum ObjCodeFlag {
     CFMExport,
 }
 
-#[derive(NameIdFromObject, Debug, Clone)]
+#[derive(LookupName, Debug, Clone)]
 pub struct ObjCodeHunk {
     name_id: u32,
     sym_offset: u32,
+    routine: Option<Weak<Routine>>,
     sym_decl_offset: u32,
     special_flag: ObjCodeFlag,
     code: Vec<u8>,
@@ -45,27 +59,68 @@ impl Deref for ObjCodeHunk {
 
 impl RawLength for ObjCodeHunk {
     fn raw_length(&self) -> usize {
-        12 + self.code.len()
+        34 + self.code.len()
     }
 }
 
 impl ObjCodeHunk {
-    pub fn has_symtab(&self) -> bool {
+    pub(super) fn has_symtab(&self) -> bool {
         self.sym_offset != 0x80000000
     }
 
-    pub fn sym_decl_offset(&self) -> u32 {
+    pub(super) fn symtab_offset(&self) -> u32 {
+        self.sym_offset
+    }
+
+    pub fn source_offset(&self) -> u32 {
         self.sym_decl_offset
     }
 
     pub fn flag(&self) -> ObjCodeFlag {
         self.special_flag
     }
+
+    pub fn set_routine(&mut self, r: &Rc<Routine>) {
+        let w = Rc::downgrade(r);
+        self.routine = Some(w);
+    }
+
+    pub fn routine(&self) -> Option<Weak<Routine>> {
+        match &self.routine {
+            Some(x) => {
+                let t = x.upgrade().unwrap();
+                let weak = Rc::downgrade(&t);
+                Some(weak)
+            }
+            None => None,
+        }
+    }
+
+    pub fn clear_routine(&mut self) {
+        self.routine = None
+    }
+
+    pub fn new(name_id: u32, sym_decl_offset: u32, flags: ObjCodeFlag, code: &[u8]) -> ObjCodeHunk {
+        Self {
+            name_id: name_id,
+            sym_offset: 0,
+            sym_decl_offset: sym_decl_offset,
+            special_flag: flags,
+            code: code.to_vec(),
+            routine: None,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
 pub struct ObjInitHunk {
     code: Vec<u8>,
+}
+
+impl RawLength for ObjInitHunk {
+    fn raw_length(&self) -> usize {
+        2 + self.code.len()
+    }
 }
 
 impl Deref for ObjInitHunk {
@@ -76,12 +131,18 @@ impl Deref for ObjInitHunk {
     }
 }
 
-#[derive(NameIdFromObject, Debug, Clone)]
+#[derive(LookupName, Debug, Clone)]
 pub struct ObjDataHunk {
     name_id: u32,
     sym_offset: u32,
     sym_decl_offset: u32,
     data: Vec<u8>,
+}
+
+impl RawLength for ObjDataHunk {
+    fn raw_length(&self) -> usize {
+        34 + self.data.len()
+    }
 }
 
 impl Deref for ObjDataHunk {
@@ -102,10 +163,16 @@ impl ObjDataHunk {
     }
 }
 
-#[derive(NameIdFromObject, Debug, Clone)]
+#[derive(LookupName, Debug, Clone)]
 pub struct ObjEntryHunk {
     name_id: u32,
     offset: u32,
+}
+
+impl RawLength for ObjEntryHunk {
+    fn raw_length(&self) -> usize {
+        10
+    }
 }
 
 impl ObjEntryHunk {
@@ -120,6 +187,12 @@ pub struct ObjXRefPair {
     value: u32,
 }
 
+impl RawLength for ObjXRefPair {
+    fn raw_length(&self) -> usize {
+        8
+    }
+}
+
 impl ObjXRefPair {
     pub fn offset(&self) -> u32 {
         self.offset
@@ -130,10 +203,16 @@ impl ObjXRefPair {
     }
 }
 
-#[derive(NameIdFromObject, Debug, Clone)]
+#[derive(LookupName, Debug, Clone)]
 pub struct ObjXRefHunk {
     name_id: u32,
     pairs: Vec<ObjXRefPair>,
+}
+
+impl RawLength for ObjXRefHunk {
+    fn raw_length(&self) -> usize {
+        6 + self.pairs.iter().map(|x| x.raw_length()).sum::<usize>()
+    }
 }
 
 impl Deref for ObjXRefHunk {
@@ -149,6 +228,12 @@ pub struct ObjExceptInfo {
     info: Vec<u8>,
 }
 
+impl RawLength for ObjExceptInfo {
+    fn raw_length(&self) -> usize {
+        2 + self.info.len()
+    }
+}
+
 impl Deref for ObjExceptInfo {
     type Target = Vec<u8>;
 
@@ -157,12 +242,18 @@ impl Deref for ObjExceptInfo {
     }
 }
 
-#[derive(NameIdFromObject, Debug, Clone)]
+#[derive(LookupName, Debug, Clone)]
 pub struct ObjContainerHunk {
     name_id: u32,
     old_def_version: u32,
     old_imp_version: u32,
     current_version: u32,
+}
+
+impl RawLength for ObjContainerHunk {
+    fn raw_length(&self) -> usize {
+        18
+    }
 }
 
 impl ObjContainerHunk {
@@ -179,15 +270,33 @@ impl ObjContainerHunk {
     }
 }
 
-#[derive(NameIdFromObject, Debug, Clone)]
+#[derive(LookupName, Debug, Clone)]
 pub struct ObjImportHunk {
     name_id: u32,
 }
 
-#[derive(NameIdFromObject, Debug, Clone)]
+impl RawLength for ObjImportHunk {
+    fn raw_length(&self) -> usize {
+        6
+    }
+}
+
+#[derive(LookupName, Debug, Clone)]
 pub struct DataPointerHunk {
     name_id: u32,
     data_name: u32,
+}
+
+impl<'b> DataPointerHunk {
+    pub fn get_data_reference(&self, index: &'b MetrowerksObject) -> Option<&'b NameEntry> {
+        index.names().iter().find(|x| x.id() == self.data_name)
+    }
+}
+
+impl RawLength for DataPointerHunk {
+    fn raw_length(&self) -> usize {
+        10
+    }
 }
 
 impl DataPointerHunk {
@@ -196,10 +305,22 @@ impl DataPointerHunk {
     }
 }
 
-#[derive(NameIdFromObject, Debug, Clone)]
+#[derive(LookupName, Debug, Clone)]
 pub struct XPointerHunk {
     name_id: u32,
     xvector_name: u32,
+}
+
+impl<'b> XPointerHunk {
+    pub fn get_data_reference(&self, index: &'b MetrowerksObject) -> Option<&'b NameEntry> {
+        index.names().iter().find(|x| x.id() == self.xvector_name)
+    }
+}
+
+impl RawLength for XPointerHunk {
+    fn raw_length(&self) -> usize {
+        10
+    }
 }
 
 impl XPointerHunk {
@@ -208,10 +329,22 @@ impl XPointerHunk {
     }
 }
 
-#[derive(NameIdFromObject, Debug, Clone)]
+#[derive(LookupName, Debug, Clone)]
 pub struct XVectorHunk {
     name_id: u32,
     function_name: u32,
+}
+
+impl<'b> XVectorHunk {
+    pub fn get_data_reference(&self, index: &'b MetrowerksObject) -> Option<&'b NameEntry> {
+        index.names().iter().find(|x| x.id() == self.function_name)
+    }
+}
+
+impl RawLength for XVectorHunk {
+    fn raw_length(&self) -> usize {
+        10
+    }
 }
 
 impl XVectorHunk {
@@ -220,27 +353,47 @@ impl XVectorHunk {
     }
 }
 
-#[derive(NameIdFromObject, Debug, Clone)]
+#[derive(LookupName, Debug, Clone)]
 pub struct ObjSourceHunk {
     name_id: u32,
-    moddate: DateTime<Local>,
+    moddate: DateTime<Local>, //u32
 }
+
+impl RawLength for ObjSourceHunk {
+    fn raw_length(&self) -> usize {
+        10
+    }
+}
+
 impl ObjSourceHunk {
     pub fn moddate(&self) -> DateTime<Local> {
         self.moddate
     }
 }
 
-#[derive(NameIdFromObject, Debug, Clone)]
+#[derive(LookupName, Debug, Clone)]
 pub struct ObjSegHunk {
     name_id: u32,
 }
 
-#[derive(NameIdFromObject, Debug, Clone)]
+impl RawLength for ObjSegHunk {
+    fn raw_length(&self) -> usize {
+        6
+    }
+}
+
+#[derive(LookupName, Debug, Clone)]
 pub struct ObjMethHunk {
     name_id: u32,
     size: u32,
 }
+
+impl RawLength for ObjMethHunk {
+    fn raw_length(&self) -> usize {
+        10
+    }
+}
+
 impl ObjMethHunk {
     pub fn size(&self) -> u32 {
         self.size
@@ -252,6 +405,13 @@ pub struct ObjClassPair {
     base_id: u32,
     bias: u32,
 }
+
+impl RawLength for ObjClassPair {
+    fn raw_length(&self) -> usize {
+        8
+    }
+}
+
 impl ObjClassPair {
     pub fn base_id(&self) -> u32 {
         self.base_id
@@ -262,11 +422,17 @@ impl ObjClassPair {
     }
 }
 
-#[derive(NameIdFromObject, Debug, Clone)]
+#[derive(LookupName, Debug, Clone)]
 pub struct ObjClassHunk {
     name_id: u32,
     methods: u16,
     pairs: Vec<ObjClassPair>,
+}
+
+impl RawLength for ObjClassHunk {
+    fn raw_length(&self) -> usize {
+        8 + self.pairs.iter().map(|x| x.raw_length()).sum::<usize>()
+    }
 }
 
 impl Deref for ObjClassHunk {
@@ -339,6 +505,94 @@ pub enum HunkType {
 #[derive(Debug, Clone)]
 pub struct Hunk {
     hunk: HunkType,
+}
+
+impl Hunk {
+    pub fn new(hunk: HunkType) -> Hunk {
+        Hunk { hunk }
+    }
+}
+
+impl Deref for Hunk {
+    type Target = HunkType;
+
+    fn deref(&self) -> &Self::Target {
+        &self.hunk
+    }
+}
+
+impl DerefMut for Hunk {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.hunk
+    }
+}
+
+impl AsRef<HunkType> for Hunk {
+    fn as_ref(&self) -> &HunkType {
+        &self.hunk
+    }
+}
+
+impl AsMut<HunkType> for Hunk {
+    fn as_mut(&mut self) -> &mut HunkType {
+        &mut self.hunk
+    }
+}
+
+impl RawLength for Hunk {
+    fn raw_length(&self) -> usize {
+        2 + match &self.hunk {
+            HunkType::Undefined => 0,
+            HunkType::Start(x) => x.raw_length(),
+            HunkType::End(x) => x.raw_length(),
+            HunkType::LocalCode(x) => x.raw_length(),
+            HunkType::GlobalCode(x) => x.raw_length(),
+            HunkType::LocalUninitializedData(x) => x.raw_length(),
+            HunkType::GlobalUninitializedData(x) => x.raw_length(),
+            HunkType::LocalInitializedData(x) => x.raw_length(),
+            HunkType::GlobalInitializedData(x) => x.raw_length(),
+            HunkType::LocalFarUninitializedData(x) => x.raw_length(),
+            HunkType::GlobalFarUninitializedData(x) => x.raw_length(),
+            HunkType::LocalFarInitializedData(x) => x.raw_length(),
+            HunkType::GlobalFarInitializedData(x) => x.raw_length(),
+            HunkType::XRefCodeJT16Bit(x) => x.raw_length(),
+            HunkType::XRefData16Bit(x) => x.raw_length(),
+            HunkType::XRef32Bit(x) => x.raw_length(),
+            HunkType::LibraryBreak(x) => x.raw_length(),
+            HunkType::GlobalEntry(x) => x.raw_length(),
+            HunkType::LocalEntry(x) => x.raw_length(),
+            HunkType::Diff8Bit(x) => x.raw_length(),
+            HunkType::Diff16Bit(x) => x.raw_length(),
+            HunkType::Diff32Bit(x) => x.raw_length(),
+            HunkType::Segment(x) => x.raw_length(),
+            HunkType::InitCode(x) => x.raw_length(),
+            HunkType::DeInitCode(x) => x.raw_length(),
+            HunkType::GlobalMultiDef(x) => x.raw_length(),
+            HunkType::GlobalOverload(x) => x.raw_length(),
+            HunkType::XRefCode16Bit(x) => x.raw_length(),
+            HunkType::XRefCode32Bit(x) => x.raw_length(),
+            HunkType::ForceActive(x) => x.raw_length(),
+            HunkType::GlobalDataPointer(x) => x.raw_length(),
+            HunkType::GlobalXPointer(x) => x.raw_length(),
+            HunkType::GlobalXVector(x) => x.raw_length(),
+            HunkType::XRefPCRelative32Bit(x) => x.raw_length(),
+            HunkType::Illegal1(x) => x.raw_length(),
+            HunkType::Illegal2(x) => x.raw_length(),
+            HunkType::CFMExport(x) => x.raw_length(),
+            HunkType::CFMImport(x) => x.raw_length(),
+            HunkType::CFMImportContainer(x) => x.raw_length(),
+            HunkType::SrcBreak(x) => x.raw_length(),
+            HunkType::LocalDataPointer(x) => x.raw_length(),
+            HunkType::LocalXPointer(x) => x.raw_length(),
+            HunkType::LocalXVector(x) => x.raw_length(),
+            HunkType::ExceptionInfo(x) => x.raw_length(),
+            HunkType::CFMInternal(x) => x.raw_length(),
+            HunkType::MethodReference(x) => x.raw_length(),
+            HunkType::MethodClassDefinition(x) => x.raw_length(),
+            HunkType::XRefAmbiguous16Bit(x) => x.raw_length(),
+            HunkType::WeakImportContainer(x) => x.raw_length(),
+        }
+    }
 }
 
 #[allow(non_camel_case_types)]
@@ -602,11 +856,81 @@ pub struct CodeHunks {
     hunks: Vec<Hunk>,
 }
 
+impl CodeHunks {
+    /// Creates a new [`CodeHunks`] with a Start and End hunk.
+    pub fn new() -> Self {
+        let mut s = Self { hunks: vec![] };
+        s.push(Hunk {
+            hunk: HunkType::Start(ObjSimpleHunk),
+        });
+        s.push(Hunk {
+            hunk: HunkType::End(ObjSimpleHunk),
+        });
+
+        s
+    }
+
+    pub fn code_length(&self) -> usize {
+        self.hunks
+            .iter()
+            .map(|h| match &h.hunk {
+                HunkType::GlobalCode(x) => x.code.len(),
+                HunkType::LocalCode(x) => x.code.len(),
+                _ => 0,
+            })
+            .sum::<usize>()
+    }
+
+    pub fn udata_length(&self) -> usize {
+        self.hunks
+            .iter()
+            .map(|h| match &h.hunk {
+                HunkType::LocalUninitializedData(x) => x.data.len(),
+                HunkType::GlobalUninitializedData(x) => x.data.len(),
+                HunkType::LocalFarUninitializedData(x) => x.data.len(),
+                HunkType::GlobalFarUninitializedData(x) => x.data.len(),
+                _ => 0,
+            })
+            .sum::<usize>()
+    }
+
+    pub fn idata_length(&self) -> usize {
+        self.hunks
+            .iter()
+            .map(|h| match &h.hunk {
+                HunkType::LocalInitializedData(x) => x.data.len(),
+                HunkType::GlobalInitializedData(x) => x.data.len(),
+                HunkType::LocalFarInitializedData(x) => x.data.len(),
+                HunkType::GlobalFarInitializedData(x) => x.data.len(),
+                _ => 0,
+            })
+            .sum::<usize>()
+    }
+}
+
+impl Default for CodeHunks {
+    fn default() -> Self {
+        Self { hunks: vec![] }
+    }
+}
+
 impl Deref for CodeHunks {
     type Target = Vec<Hunk>;
 
     fn deref(&self) -> &Self::Target {
         &self.hunks
+    }
+}
+
+impl DerefMut for CodeHunks {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.hunks
+    }
+}
+
+impl RawLength for CodeHunks {
+    fn raw_length(&self) -> usize {
+        self.iter().map(|x| x.raw_length()).sum()
     }
 }
 
@@ -701,6 +1025,7 @@ impl TryFrom<&[u8]> for CodeHunks {
                         sym_decl_offset: sym_decl_offset,
                         code: code.to_owned(),
                         special_flag: special,
+                        routine: None,
                     };
 
                     let hunk = match tag {
@@ -1144,5 +1469,36 @@ impl TryFrom<&[u8]> for CodeHunks {
         }
 
         Ok(CodeHunks { hunks: hunks })
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use crate::objects_m68k::*;
+    use crate::symtable_m68k::*;
+    use crate::util::Lookup;
+
+    use super::CodeHunks;
+    use super::ObjCodeHunk;
+
+    #[test]
+    fn test_lookup() {
+        let mwob = {
+            let mut mwob = MetrowerksObject::new(&CodeHunks::default(), &SymbolTable::default());
+
+            // Add names
+            {
+                let names: &mut Vec<NameEntry> = mwob.as_mut();
+                names.push(NameEntry::new(1, "add"));
+                names.push(NameEntry::new(2, "a"));
+                names.push(NameEntry::new(3, "b"));
+            }
+
+            mwob
+        };
+        let code = ObjCodeHunk::new(1, 123, super::ObjCodeFlag::None, &vec![]);
+
+        let ne: &NameEntry = code.get_reference(&mwob).unwrap();
+        assert_eq!("add", ne.name());
     }
 }
