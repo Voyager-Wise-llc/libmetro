@@ -422,12 +422,17 @@ mod tests {
             let mut code = CodeHunks::new();
 
             // this already is populated with a start and end hunk
-            let add_code = Hunk::new(HunkType::GlobalCode(ObjCodeHunk::new(
-                1,
-                173,
-                ObjCodeFlag::None,
-                &[32, 47, 0, 4, 208, 175, 0, 8, 78, 117],
-            )));
+            let add_code = Hunk::new(HunkType::GlobalCode({
+                let mut o = ObjCodeHunk::new(
+                    1,
+                    173,
+                    ObjCodeFlag::None,
+                    &[32, 47, 0, 4, 208, 175, 0, 8, 78, 117],
+                );
+                o.set_routine(symtab.routines().first().unwrap());
+                o
+            }));
+
             code.insert(1, add_code);
 
             code
