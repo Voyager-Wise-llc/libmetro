@@ -21,8 +21,9 @@ pub fn name_macro_derive(input: TokenStream) -> TokenStream {
 fn impl_name_macro(ast: &syn::DeriveInput) -> TokenStream {
     let name = &ast.ident;
     let gen = quote! {
-        impl<'b> Lookup<'b, NameEntry, MetrowerksObject> for #name {
+        impl<'b> crate::util::Lookup<'b, NameEntry, MetrowerksObject> for #name {
             fn get_reference(&self, index: &'b MetrowerksObject) -> Option<&'b NameEntry> {
+                // not guaranteed that the Vec is in-order by id.
                 index.names().iter().find(|x| x.id() == self.name_id)
             }
         }

@@ -3,7 +3,7 @@ use std::fmt::Debug;
 
 use crate::objects_m68k::{MetrowerksObject, NameEntry};
 use crate::types_m68k::TypeTable;
-use crate::util::{convert_be_i32, Lookup, RawLength};
+use crate::util::{convert_be_i32, RawLength};
 
 use super::types_m68k::{DataType, TypeDefinition};
 
@@ -106,19 +106,13 @@ impl TryFrom<u8> for StorageClass {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(LookupName, Debug, Clone)]
 pub struct LocalVar {
     name_id: u32,
     var_type: DataType,
     kind: StorageKind,
     sclass: StorageClass,
     wher: u32, // TODO: Integrate this into the sclass
-}
-
-impl<'b> Lookup<'b, NameEntry, MetrowerksObject> for LocalVar {
-    fn get_reference(&self, index: &'b MetrowerksObject) -> Option<&'b NameEntry> {
-        index.names().iter().find(|x| x.id() == self.name_id)
-    }
 }
 
 impl From<&[u8]> for LocalVar {

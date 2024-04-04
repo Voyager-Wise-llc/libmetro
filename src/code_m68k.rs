@@ -4,7 +4,7 @@ use chrono::{DateTime, Local};
 
 use crate::{
     objects_m68k::{MetrowerksObject, NameEntry},
-    util::{from_mac_datetime, Lookup, RawLength},
+    util::{from_mac_datetime, RawLength},
 };
 
 use super::util::{convert_be_u16, convert_be_u32};
@@ -35,19 +35,13 @@ pub enum ObjCodeFlag {
     CFMExport,
 }
 
-#[derive(Debug, Clone)]
+#[derive(LookupName, Debug, Clone)]
 pub struct ObjCodeHunk {
     name_id: u32,
     sym_offset: u32,
     sym_decl_offset: u32,
     special_flag: ObjCodeFlag,
     code: Vec<u8>,
-}
-
-impl<'b> Lookup<'b, NameEntry, MetrowerksObject> for ObjCodeHunk {
-    fn get_reference(&self, index: &'b MetrowerksObject) -> Option<&'b NameEntry> {
-        index.names().iter().find(|x| x.id() == self.name_id)
-    }
 }
 
 impl Deref for ObjCodeHunk {
@@ -113,18 +107,12 @@ impl Deref for ObjInitHunk {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(LookupName, Debug, Clone)]
 pub struct ObjDataHunk {
     name_id: u32,
     sym_offset: u32,
     sym_decl_offset: u32,
     data: Vec<u8>,
-}
-
-impl<'b> Lookup<'b, NameEntry, MetrowerksObject> for ObjDataHunk {
-    fn get_reference(&self, index: &'b MetrowerksObject) -> Option<&'b NameEntry> {
-        index.names().iter().find(|x| x.id() == self.name_id)
-    }
 }
 
 impl RawLength for ObjDataHunk {
@@ -151,16 +139,10 @@ impl ObjDataHunk {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(LookupName, Debug, Clone)]
 pub struct ObjEntryHunk {
     name_id: u32,
     offset: u32,
-}
-
-impl<'b> Lookup<'b, NameEntry, MetrowerksObject> for ObjEntryHunk {
-    fn get_reference(&self, index: &'b MetrowerksObject) -> Option<&'b NameEntry> {
-        index.names().iter().find(|x| x.id() == self.name_id)
-    }
 }
 
 impl RawLength for ObjEntryHunk {
@@ -197,16 +179,10 @@ impl ObjXRefPair {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(LookupName, Debug, Clone)]
 pub struct ObjXRefHunk {
     name_id: u32,
     pairs: Vec<ObjXRefPair>,
-}
-
-impl<'b> Lookup<'b, NameEntry, MetrowerksObject> for ObjXRefHunk {
-    fn get_reference(&self, index: &'b MetrowerksObject) -> Option<&'b NameEntry> {
-        index.names().iter().find(|x| x.id() == self.name_id)
-    }
 }
 
 impl RawLength for ObjXRefHunk {
@@ -242,18 +218,12 @@ impl Deref for ObjExceptInfo {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(LookupName, Debug, Clone)]
 pub struct ObjContainerHunk {
     name_id: u32,
     old_def_version: u32,
     old_imp_version: u32,
     current_version: u32,
-}
-
-impl<'b> Lookup<'b, NameEntry, MetrowerksObject> for ObjContainerHunk {
-    fn get_reference(&self, index: &'b MetrowerksObject) -> Option<&'b NameEntry> {
-        index.names().iter().find(|x| x.id() == self.name_id)
-    }
 }
 
 impl RawLength for ObjContainerHunk {
@@ -276,15 +246,9 @@ impl ObjContainerHunk {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(LookupName, Debug, Clone)]
 pub struct ObjImportHunk {
     name_id: u32,
-}
-
-impl<'b> Lookup<'b, NameEntry, MetrowerksObject> for ObjImportHunk {
-    fn get_reference(&self, index: &'b MetrowerksObject) -> Option<&'b NameEntry> {
-        index.names().iter().find(|x| x.id() == self.name_id)
-    }
 }
 
 impl RawLength for ObjImportHunk {
@@ -293,16 +257,10 @@ impl RawLength for ObjImportHunk {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(LookupName, Debug, Clone)]
 pub struct DataPointerHunk {
     name_id: u32,
     data_name: u32,
-}
-
-impl<'b> Lookup<'b, NameEntry, MetrowerksObject> for DataPointerHunk {
-    fn get_reference(&self, index: &'b MetrowerksObject) -> Option<&'b NameEntry> {
-        index.names().iter().find(|x| x.id() == self.name_id)
-    }
 }
 
 impl<'b> DataPointerHunk {
@@ -323,16 +281,10 @@ impl DataPointerHunk {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(LookupName, Debug, Clone)]
 pub struct XPointerHunk {
     name_id: u32,
     xvector_name: u32,
-}
-
-impl<'b> Lookup<'b, NameEntry, MetrowerksObject> for XPointerHunk {
-    fn get_reference(&self, index: &'b MetrowerksObject) -> Option<&'b NameEntry> {
-        index.names().iter().find(|x| x.id() == self.name_id)
-    }
 }
 
 impl<'b> XPointerHunk {
@@ -353,16 +305,10 @@ impl XPointerHunk {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(LookupName, Debug, Clone)]
 pub struct XVectorHunk {
     name_id: u32,
     function_name: u32,
-}
-
-impl<'b> Lookup<'b, NameEntry, MetrowerksObject> for XVectorHunk {
-    fn get_reference(&self, index: &'b MetrowerksObject) -> Option<&'b NameEntry> {
-        index.names().iter().find(|x| x.id() == self.name_id)
-    }
 }
 
 impl<'b> XVectorHunk {
@@ -383,16 +329,10 @@ impl XVectorHunk {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(LookupName, Debug, Clone)]
 pub struct ObjSourceHunk {
     name_id: u32,
     moddate: DateTime<Local>, //u32
-}
-
-impl<'b> Lookup<'b, NameEntry, MetrowerksObject> for ObjSourceHunk {
-    fn get_reference(&self, index: &'b MetrowerksObject) -> Option<&'b NameEntry> {
-        index.names().iter().find(|x| x.id() == self.name_id)
-    }
 }
 
 impl RawLength for ObjSourceHunk {
@@ -407,15 +347,9 @@ impl ObjSourceHunk {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(LookupName, Debug, Clone)]
 pub struct ObjSegHunk {
     name_id: u32,
-}
-
-impl<'b> Lookup<'b, NameEntry, MetrowerksObject> for ObjSegHunk {
-    fn get_reference(&self, index: &'b MetrowerksObject) -> Option<&'b NameEntry> {
-        index.names().iter().find(|x| x.id() == self.name_id)
-    }
 }
 
 impl RawLength for ObjSegHunk {
@@ -424,16 +358,10 @@ impl RawLength for ObjSegHunk {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(LookupName, Debug, Clone)]
 pub struct ObjMethHunk {
     name_id: u32,
     size: u32,
-}
-
-impl<'b> Lookup<'b, NameEntry, MetrowerksObject> for ObjMethHunk {
-    fn get_reference(&self, index: &'b MetrowerksObject) -> Option<&'b NameEntry> {
-        index.names().iter().find(|x| x.id() == self.name_id)
-    }
 }
 
 impl RawLength for ObjMethHunk {
@@ -470,17 +398,11 @@ impl ObjClassPair {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(LookupName, Debug, Clone)]
 pub struct ObjClassHunk {
     name_id: u32,
     methods: u16,
     pairs: Vec<ObjClassPair>,
-}
-
-impl<'b> Lookup<'b, NameEntry, MetrowerksObject> for ObjClassHunk {
-    fn get_reference(&self, index: &'b MetrowerksObject) -> Option<&'b NameEntry> {
-        index.names().iter().find(|x| x.id() == self.name_id)
-    }
 }
 
 impl RawLength for ObjClassHunk {

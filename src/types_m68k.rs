@@ -4,10 +4,7 @@ use std::{
     ops::{Deref, DerefMut, Range},
 };
 
-use crate::{
-    objects_m68k::{MetrowerksObject, NameEntry},
-    util::Lookup,
-};
+use crate::objects_m68k::{MetrowerksObject, NameEntry};
 
 use super::util::{convert_be_u16, convert_be_u32, RawLength, Serializable};
 
@@ -274,17 +271,11 @@ impl RawLength for Array {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(LookupName, Debug, Clone)]
 pub struct StructMember {
     name_id: u32,
     typ: DataType,
     offset: u32,
-}
-
-impl<'b> Lookup<'b, NameEntry, MetrowerksObject> for StructMember {
-    fn get_reference(&self, index: &'b MetrowerksObject) -> Option<&'b NameEntry> {
-        index.names().iter().find(|x| x.id() == self.name_id)
-    }
 }
 
 impl StructMember {
@@ -337,17 +328,11 @@ impl Serializable for StructMember {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(LookupName, Debug, Clone)]
 pub struct Struct {
     name_id: u32,
     size: u32,
     members: Vec<StructMember>,
-}
-
-impl<'b> Lookup<'b, NameEntry, MetrowerksObject> for Struct {
-    fn get_reference(&self, index: &'b MetrowerksObject) -> Option<&'b NameEntry> {
-        index.names().iter().find(|x| x.id() == self.name_id)
-    }
 }
 
 impl Deref for Struct {
@@ -412,16 +397,10 @@ impl RawLength for Struct {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(LookupName, Debug, Clone)]
 pub struct EnumMember {
     name_id: u32,
     value: u32,
-}
-
-impl<'b> Lookup<'b, NameEntry, MetrowerksObject> for EnumMember {
-    fn get_reference(&self, index: &'b MetrowerksObject) -> Option<&'b NameEntry> {
-        index.names().iter().find(|x| x.id() == self.name_id)
-    }
 }
 
 impl EnumMember {
@@ -458,17 +437,11 @@ impl Serializable for EnumMember {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(LookupName, Debug, Clone)]
 pub struct Enum {
     name_id: u32,
     typ: DataType,
     members: Vec<EnumMember>,
-}
-
-impl<'b> Lookup<'b, NameEntry, MetrowerksObject> for Enum {
-    fn get_reference(&self, index: &'b MetrowerksObject) -> Option<&'b NameEntry> {
-        index.names().iter().find(|x| x.id() == self.name_id)
-    }
 }
 
 impl Deref for Enum {
@@ -555,19 +528,13 @@ impl TryFrom<&[u8]> for Enum {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(LookupName, Debug, Clone)]
 pub struct PascalArray {
     packed: bool,
     size: u32,
     iid: u32,
     eid: DataType,
     name_id: u32,
-}
-
-impl<'b> Lookup<'b, NameEntry, MetrowerksObject> for PascalArray {
-    fn get_reference(&self, index: &'b MetrowerksObject) -> Option<&'b NameEntry> {
-        index.names().iter().find(|x| x.id() == self.name_id)
-    }
 }
 
 impl Serializable for PascalArray {
@@ -636,19 +603,13 @@ impl RawLength for PascalArray {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(LookupName, Debug, Clone)]
 pub struct PascalRange {
     name_id: u32,
     typ: DataType,
     size: u32,
     lower: u32,
     upper: u32,
-}
-
-impl<'b> Lookup<'b, NameEntry, MetrowerksObject> for PascalRange {
-    fn get_reference(&self, index: &'b MetrowerksObject) -> Option<&'b NameEntry> {
-        index.names().iter().find(|x| x.id() == self.name_id)
-    }
 }
 
 impl Serializable for PascalRange {
@@ -724,17 +685,11 @@ impl Into<Range<u32>> for PascalRange {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(LookupName, Debug, Clone)]
 pub struct PascalSet {
     name_id: u32,
     base: DataType,
     size: u32,
-}
-
-impl<'b> Lookup<'b, NameEntry, MetrowerksObject> for PascalSet {
-    fn get_reference(&self, index: &'b MetrowerksObject) -> Option<&'b NameEntry> {
-        index.names().iter().find(|x| x.id() == self.name_id)
-    }
 }
 
 impl Serializable for PascalSet {
@@ -789,16 +744,10 @@ impl RawLength for PascalSet {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(LookupName, Debug, Clone)]
 pub struct PascalEnum {
     name_id: u32,
     members: Vec<u32>,
-}
-
-impl<'b> Lookup<'b, NameEntry, MetrowerksObject> for PascalEnum {
-    fn get_reference(&self, index: &'b MetrowerksObject) -> Option<&'b NameEntry> {
-        index.names().iter().find(|x| x.id() == self.name_id)
-    }
 }
 
 impl PascalEnum {
@@ -858,16 +807,10 @@ impl RawLength for PascalEnum {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(LookupName, Debug, Clone)]
 pub struct PascalString {
     size: u32,
     name_id: u32,
-}
-
-impl<'b> Lookup<'b, NameEntry, MetrowerksObject> for PascalString {
-    fn get_reference(&self, index: &'b MetrowerksObject) -> Option<&'b NameEntry> {
-        index.names().iter().find(|x| x.id() == self.name_id)
-    }
 }
 
 impl Serializable for PascalString {
